@@ -107,6 +107,7 @@ function resolveTextNode(
     id: node.id,
     type: "text",
     binding: node.binding,
+    align: node.align ?? "left",
     font: node.font,
     lineHeight: node.lineHeight,
     frame: {

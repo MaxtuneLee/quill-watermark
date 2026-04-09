@@ -9,6 +9,7 @@ import { resolveLayout } from "../../template-engine/layout/resolve-layout";
 import { loadImageAsset } from "../../template-engine/render/load-image-asset";
 import { renderCanvas } from "../../template-engine/render/render-canvas";
 import type { RenderCanvasScene } from "../../template-engine/render/render-canvas";
+import type { TemplateLayoutNode } from "../../template-engine/types";
 
 const PREVIEW_LONG_EDGE = 1200;
 
@@ -75,6 +76,38 @@ function pickTextColor(background: string): string {
   return perceivedLuma > 150 ? "#111111" : "#ffffff";
 }
 
+function withPhotoIntrinsicSize(
+  layout: TemplateLayoutNode,
+  width: number,
+  height: number,
+): TemplateLayoutNode {
+  const nextWidth = Math.max(1, Math.round(width));
+  const nextHeight = Math.max(1, Math.round(height));
+
+  if (layout.type === "image") {
+    if (layout.binding !== "photo") {
+      return layout;
+    }
+
+    return {
+      ...layout,
+      intrinsicSize: {
+        width: nextWidth,
+        height: nextHeight,
+      },
+    };
+  }
+
+  if (layout.type === "text") {
+    return layout;
+  }
+
+  return {
+    ...layout,
+    children: layout.children.map((child) => withPhotoIntrinsicSize(child, nextWidth, nextHeight)),
+  };
+}
+
 export function PreviewStage() {
   const template = useAtomValue(activeTemplateAtom);
   const instance = useAtomValue(editorInstanceAtom);
@@ -139,7 +172,7 @@ export function PreviewStage() {
             padding: template.canvas.padding,
             background: template.canvas.background,
           },
-          layout: template.layout,
+          layout: withPhotoIntrinsicSize(template.layout, imageAsset.width, imageAsset.height),
           resolvedFields: Object.fromEntries(
             Object.entries(resolvedFields).map(([fieldId, field]) => [
               fieldId,
@@ -178,6 +211,7 @@ export function PreviewStage() {
                 font: node.font,
                 lineHeight: node.lineHeight,
                 color: pickTextColor(template.canvas.background),
+                align: node.align,
               };
             }),
         };

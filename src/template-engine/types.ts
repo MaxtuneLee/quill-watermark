@@ -287,6 +287,7 @@ interface ResolvedLayoutLeafBase {
   binding: string;
   frame: Rect;
   contentBox: Rect;
+  align?: TextAlign;
   font?: string;
   lineHeight?: number;
   text: MeasuredTextBlock;
