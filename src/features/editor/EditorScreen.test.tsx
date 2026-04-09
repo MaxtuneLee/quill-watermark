@@ -8,6 +8,7 @@ import {
   editorDispatchAtom,
   fieldOverridesAtom,
 } from "../../app/app-state";
+import { Button } from "../../components/ui";
 import * as metadataService from "../../services/metadata/extract-metadata";
 import { loadImageAsset } from "../../template-engine/render/load-image-asset";
 import { renderCanvas } from "../../template-engine/render/render-canvas";
@@ -64,14 +65,57 @@ beforeEach(() => {
   vi.mocked(renderCanvas).mockReset();
 });
 
+async function renderLoadedEditorScreen() {
+  const props = makeLoadedEditorProps();
+  const store = createStore();
+
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue(props.instance.metadata);
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: props.template.id,
+  });
+  await store.set(editorDispatchAtom, {
+    type: "import-image",
+    sourceFile: props.instance.sourceFile,
+  });
+
+  render(
+    <Provider store={store}>
+      <EditorScreen
+        {...props}
+        dispatch={(action) => {
+          void store.set(editorDispatchAtom, action);
+        }}
+      />
+    </Provider>,
+  );
+
+  return { props, store };
+}
+
 test("shows an image importer before a photo is loaded", () => {
   render(<EditorScreen {...makePendingEditorProps()} />);
 
   expect(screen.getByRole("button", { name: /add photo/i })).toBeInTheDocument();
 });
 
-test("renders the desktop workspace shell with rails, top export CTA, and library return path", () => {
-  render(<EditorScreen {...makeLoadedEditorProps()} />);
+test("preserves function-valued button className while appending workspace variants", () => {
+  render(
+    <Button className={() => "from-fn"} size="compact" variant="workspace-primary">
+      Export
+    </Button>,
+  );
+
+  expect(screen.getByRole("button", { name: /export/i })).toHaveClass(
+    "from-fn",
+    "ui-button-workspace-primary",
+    "ui-button-size-compact",
+  );
+});
+
+test("renders the desktop workspace shell with rails, top export CTA, and library return path", async () => {
+  await renderLoadedEditorScreen();
 
   const styleRail = screen.getByRole("region", { name: /style rail/i });
   const previewWorkspace = screen.getByRole("region", { name: /preview workspace/i });
@@ -95,24 +139,7 @@ test("renders the desktop workspace shell with rails, top export CTA, and librar
 
 test("updates canvas padding from the style panel", async () => {
   const user = userEvent.setup();
-  const props = makeLoadedEditorProps();
-  const store = createStore();
-
-  await store.set(editorDispatchAtom, {
-    type: "select-template",
-    templateId: props.template.id,
-  });
-
-  render(
-    <Provider store={store}>
-      <EditorScreen
-        {...props}
-        dispatch={(action) => {
-          void store.set(editorDispatchAtom, action);
-        }}
-      />
-    </Provider>,
-  );
+  const { store } = await renderLoadedEditorScreen();
 
   const input = screen.getByLabelText(/canvas padding/i);
   await user.clear(input);
@@ -123,24 +150,7 @@ test("updates canvas padding from the style panel", async () => {
 
 test("toggles a data card from the data panel", async () => {
   const user = userEvent.setup();
-  const props = makeLoadedEditorProps();
-  const store = createStore();
-
-  await store.set(editorDispatchAtom, {
-    type: "select-template",
-    templateId: props.template.id,
-  });
-
-  render(
-    <Provider store={store}>
-      <EditorScreen
-        {...props}
-        dispatch={(action) => {
-          void store.set(editorDispatchAtom, action);
-        }}
-      />
-    </Provider>,
-  );
+  const { store } = await renderLoadedEditorScreen();
 
   await user.click(screen.getByRole("switch", { name: /show camera model/i }));
 
@@ -149,24 +159,7 @@ test("toggles a data card from the data panel", async () => {
 
 test("updates a manual override from the data panel", async () => {
   const user = userEvent.setup();
-  const props = makeLoadedEditorProps();
-  const store = createStore();
-
-  await store.set(editorDispatchAtom, {
-    type: "select-template",
-    templateId: props.template.id,
-  });
-
-  render(
-    <Provider store={store}>
-      <EditorScreen
-        {...props}
-        dispatch={(action) => {
-          void store.set(editorDispatchAtom, action);
-        }}
-      />
-    </Provider>,
-  );
+  const { store } = await renderLoadedEditorScreen();
 
   const input = screen.getByLabelText(/author override/i);
   await user.clear(input);

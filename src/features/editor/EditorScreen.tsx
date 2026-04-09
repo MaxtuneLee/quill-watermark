@@ -33,8 +33,6 @@ interface EditorScreenProps {
   instance: EditorInstance | null;
   importError: string | null;
   dispatch: (action: EditorAction) => Promise<void> | void;
-  dataCards?: TemplateDataCard[];
-  resolvedFields?: ResolvedFieldMap;
 }
 
 function TemplateSummary({ template }: { template: WatermarkTemplate }) {
@@ -322,21 +320,14 @@ function downloadExport(blob: Blob, fileName: string) {
   URL.revokeObjectURL(objectUrl);
 }
 
-export function EditorScreen({
-  template,
-  instance,
-  importError,
-  dispatch,
-  dataCards,
-  resolvedFields,
-}: EditorScreenProps) {
+export function EditorScreen({ template, instance, importError, dispatch }: EditorScreenProps) {
   const atomDataCards = useAtomValue(editorDataCardsAtom);
   const controlValues = useAtomValue(editorControlsAtom);
   const exportValues = useAtomValue(editorExportOptionsAtom);
   const fieldOverrides = useAtomValue(fieldOverridesAtom);
   const atomResolvedFields = useAtomValue(editorResolvedFieldsAtom);
-  const activeDataCards = dataCards ?? atomDataCards;
-  const activeResolvedFields = resolvedFields ?? atomResolvedFields;
+  const activeDataCards = atomDataCards;
+  const activeResolvedFields = atomResolvedFields;
   const previewStageRef = useRef<PreviewStageHandle | null>(null);
   const [previewRenderState, setPreviewRenderState] = useState<PreviewRenderState>("idle");
 
