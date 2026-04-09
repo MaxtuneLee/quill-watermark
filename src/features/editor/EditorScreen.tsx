@@ -1,6 +1,7 @@
 import type { EditorAction, EditorInstance } from "../../app/app-state";
 import type { WatermarkTemplate } from "../../template-engine/types";
 import { ImageImporter } from "./ImageImporter";
+import { PreviewStage } from "./PreviewStage";
 
 interface EditorScreenProps {
   template: WatermarkTemplate;
@@ -39,11 +40,7 @@ export function EditorScreen({ template, instance, importError, dispatch }: Edit
         </>
       ) : (
         <>
-          <section aria-label="Preview stage" role="region">
-            <h2>Preview Stage</h2>
-            <p>Canvas preview and composition controls will land in the next tasks.</p>
-            <p>Loaded file: {instance.sourceFile.name}</p>
-          </section>
+          <PreviewStage />
           <aside aria-label="Editor panels">
             <h2>Panels</h2>
             <p>Data and style panels are intentionally stubbed in this task.</p>
