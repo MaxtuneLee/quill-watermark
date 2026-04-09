@@ -1,0 +1,6 @@
+import { Provider as JotaiProvider } from "jotai";
+import type { PropsWithChildren } from "react";
+
+export function AppProviders({ children }: PropsWithChildren) {
+  return <JotaiProvider>{children}</JotaiProvider>;
+}

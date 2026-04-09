@@ -1,0 +1,11 @@
+:root {
+  --font-sans: "Avenir Next", "Segoe UI", sans-serif;
+  --color-bg: #fffdf8;
+  --color-text: #171717;
+  --color-border: #d4d1c7;
+  --color-surface: #f2efe3;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --radius-md: 0.75rem;
+}

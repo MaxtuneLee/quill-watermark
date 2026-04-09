@@ -1,0 +1,39 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  background: radial-gradient(circle at top, #fff7d6 0%, var(--color-bg) 45%);
+  color: var(--color-text);
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.app-shell {
+  max-width: 76rem;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: var(--space-6);
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-6);
+}
+
+.app-brand {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: var(--space-3) var(--space-4);
+}
