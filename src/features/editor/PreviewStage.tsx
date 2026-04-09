@@ -1,12 +1,22 @@
 import { useAtomValue } from "jotai";
-import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   activeTemplateAtom,
   editorControlsAtom,
   editorInstanceAtom,
   editorPreviewResolvedFieldsAtom,
 } from "../../app/app-state";
+import { Button, Slider } from "../../components/ui";
 import { resolveLayout } from "../../template-engine/layout/resolve-layout";
+import { resolvePresetLayout } from "../../template-engine/presets/resolve-preset";
 import { loadImageAsset } from "../../template-engine/render/load-image-asset";
 import type { LoadedImageAsset } from "../../template-engine/render/load-image-asset";
 import { renderCanvas } from "../../template-engine/render/render-canvas";
@@ -183,44 +193,39 @@ function withBrandPosition(
   };
 }
 
-function withMetadataOrder(
-  layout: TemplateLayoutNode,
-  order: StylePanelValues["metadataOrder"],
-): TemplateLayoutNode {
-  if (layout.type === "text" || layout.type === "image") {
-    return layout;
-  }
-
-  const nextChildren = layout.children.map((child) => withMetadataOrder(child, order));
-  const brandNodes = nextChildren.filter(
-    (child) => child.type === "text" && child.binding === "brandLine",
-  );
-  const otherNodes = nextChildren.filter(
-    (child) => !(child.type === "text" && child.binding === "brandLine"),
-  );
-
-  return {
-    ...layout,
-    children:
-      order === "brand-first" ? [...brandNodes, ...otherNodes] : [...otherNodes, ...brandNodes],
-  };
+function resolveAspectRatio(templateCanvas: WatermarkTemplate["canvas"]): number | null {
+  return templateCanvas.aspectRatio === null
+    ? null
+    : templateCanvas.aspectRatio.width / Math.max(templateCanvas.aspectRatio.height, 1);
 }
 
-function resolveAspectRatio(
-  template: WatermarkTemplate,
-  outputRatio: StylePanelValues["outputRatio"],
-): number | null {
-  if (outputRatio === "original") {
-    return template.canvas.aspectRatio === null
-      ? null
-      : template.canvas.aspectRatio.width / Math.max(template.canvas.aspectRatio.height, 1);
+function resolveSurfaceInset(surfaceStyle: StylePanelValues["surfaceStyle"]): number {
+  if (surfaceStyle === "shadow" || surfaceStyle === "border-shadow") {
+    return 28;
   }
 
-  const [width, height] = outputRatio.split(":").map(Number);
-  return width / Math.max(height, 1);
+  if (surfaceStyle === "border") {
+    return 2;
+  }
+
+  return 0;
 }
 
-export function PreviewStage() {
+export type PreviewRenderState = "idle" | "loading" | "ready" | "error";
+
+export interface PreviewStageHandle {
+  getCanvas: () => HTMLCanvasElement | null;
+  getRenderState: () => PreviewRenderState;
+}
+
+interface PreviewStageProps {
+  onRenderStateChange?: (state: PreviewRenderState) => void;
+}
+
+export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
+  { onRenderStateChange },
+  ref,
+) {
   const template = useAtomValue(activeTemplateAtom);
   const controls = useAtomValue(editorControlsAtom);
   const instance = useAtomValue(editorInstanceAtom);
@@ -229,7 +234,7 @@ export function PreviewStage() {
   const zoomControlId = useId();
   const [viewMode, setViewMode] = useState<ViewMode>("fit");
   const [zoomPercent, setZoomPercent] = useState(100);
-  const [renderState, setRenderState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [renderState, setRenderState] = useState<PreviewRenderState>("idle");
   const [canvasSize, setCanvasSize] = useState<CanvasSize>({
     width: PREVIEW_LONG_EDGE,
     height: PREVIEW_LONG_EDGE,
@@ -240,6 +245,19 @@ export function PreviewStage() {
   useEffect(() => {
     decodedAssetRef.current = decodedAsset;
   }, [decodedAsset]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getCanvas: () => canvasRef.current,
+      getRenderState: () => renderState,
+    }),
+    [renderState],
+  );
+
+  useEffect(() => {
+    onRenderStateChange?.(renderState);
+  }, [onRenderStateChange, renderState]);
 
   useEffect(() => {
     const sourceFile = instance?.sourceFile ?? null;
@@ -310,10 +328,15 @@ export function PreviewStage() {
       setRenderState("loading");
 
       try {
+        const { preset, layout: presetLayout } = resolvePresetLayout(
+          template,
+          controls.outputRatio,
+        );
+        const surfaceInset = resolveSurfaceInset(controls.surfaceStyle);
         const nextCanvasSize = resolveCanvasSize(
           decodedAsset.width,
           decodedAsset.height,
-          resolveAspectRatio(template, controls.outputRatio),
+          resolveAspectRatio(preset.canvas),
         );
         const canvas = canvasRef.current;
         if (canvas === null) {
@@ -328,26 +351,23 @@ export function PreviewStage() {
           throw new Error("Canvas context unavailable.");
         }
 
-        const transformedLayout = withMetadataOrder(
-          withBrandPosition(
-            withTypographyTheme(
-              withPhotoFit(
-                withPhotoIntrinsicSize(template.layout, decodedAsset.width, decodedAsset.height),
-                controls.imageFit,
-              ),
-              controls.typographyTheme,
+        const transformedLayout = withBrandPosition(
+          withTypographyTheme(
+            withPhotoFit(
+              withPhotoIntrinsicSize(presetLayout, decodedAsset.width, decodedAsset.height),
+              controls.imageFit,
             ),
-            controls.brandPosition,
+            controls.typographyTheme,
           ),
-          controls.metadataOrder,
+          controls.brandPosition,
         );
 
         const layoutResult = resolveLayout({
           canvas: {
             width: nextCanvasSize.width,
             height: nextCanvasSize.height,
-            padding: controls.canvasPadding,
-            background: template.canvas.background,
+            padding: controls.canvasPadding + surfaceInset,
+            background: preset.canvas.background,
           },
           layout: transformedLayout,
           resolvedFields: Object.fromEntries(
@@ -365,7 +385,10 @@ export function PreviewStage() {
           canvas: {
             width: nextCanvasSize.width,
             height: nextCanvasSize.height,
-            background: template.canvas.background,
+            background: preset.canvas.background,
+            cornerRadius: controls.cornerRadius,
+            surfaceStyle: controls.surfaceStyle,
+            surfaceInset,
           },
           nodes: layoutResult.drawOrder
             .map((nodeId) => layoutResult.nodes[nodeId])
@@ -387,7 +410,7 @@ export function PreviewStage() {
                 lines: node.text.lines,
                 font: node.font,
                 lineHeight: node.lineHeight,
-                color: pickTextColor(template.canvas.background),
+                color: pickTextColor(preset.canvas.background),
                 align: node.align,
               };
             }),
@@ -435,15 +458,7 @@ export function PreviewStage() {
   const previewFrameStyle = {
     overflow: "auto",
     maxHeight: "70vh",
-    border:
-      controls.surfaceStyle === "border" || controls.surfaceStyle === "border-shadow"
-        ? "1px solid var(--color-border)"
-        : "1px solid transparent",
-    borderRadius: `${controls.cornerRadius}px`,
-    boxShadow:
-      controls.surfaceStyle === "shadow" || controls.surfaceStyle === "border-shadow"
-        ? "0 18px 38px rgba(23, 23, 23, 0.14)"
-        : "none",
+    border: "1px solid var(--color-border)",
   } satisfies CSSProperties;
 
   return (
@@ -452,29 +467,38 @@ export function PreviewStage() {
         <h2>Preview Stage</h2>
         <p>Loaded file: {instance.sourceFile.name}</p>
       </header>
-      <div>
-        <button
-          type="button"
+      <div className="editor-preview-toolbar">
+        <Button
+          className="editor-pill-button"
+          aria-pressed={viewMode === "fit"}
           onClick={() => {
             setViewMode("fit");
           }}
         >
           Fit
-        </button>
-        <label htmlFor={zoomControlId}>
-          Zoom
-          <input
-            id={zoomControlId}
-            type="range"
-            min={25}
+        </Button>
+        <div className="editor-preview-zoom">
+          <label htmlFor={zoomControlId}>Zoom</label>
+          <Slider.Root
+            aria-labelledby={zoomControlId}
+            className="editor-zoom-slider"
             max={200}
+            min={25}
+            step={1}
             value={zoomPercent}
-            onChange={(event) => {
+            onValueChange={(value) => {
               setViewMode("zoom");
-              setZoomPercent(Number(event.target.value));
+              setZoomPercent(value);
             }}
-          />
-        </label>
+          >
+            <Slider.Control className="editor-zoom-slider-control">
+              <Slider.Track className="editor-zoom-slider-track">
+                <Slider.Indicator className="editor-zoom-slider-indicator" />
+              </Slider.Track>
+              <Slider.Thumb className="editor-zoom-slider-thumb" getAriaLabel={() => "Zoom"} />
+            </Slider.Control>
+          </Slider.Root>
+        </div>
         <output aria-live="polite">{zoomPercent}%</output>
       </div>
       <div style={previewFrameStyle}>
@@ -484,4 +508,4 @@ export function PreviewStage() {
       {renderState === "error" ? <p role="alert">Unable to render preview.</p> : null}
     </section>
   );
-}
+});

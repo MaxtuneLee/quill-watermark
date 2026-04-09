@@ -109,16 +109,20 @@ export function DataPanel({
 
               <label className="editor-switch-row">
                 <span>Display field</span>
-                <Switch.Root
-                  checked={cardEnabled[card.id] ?? false}
-                  aria-label={`Display ${card.title}`}
-                  className="editor-switch"
-                  onCheckedChange={(checked) => {
-                    onCardEnabledChange(card.id, checked);
-                  }}
-                >
-                  <Switch.Thumb className="editor-switch-thumb" />
-                </Switch.Root>
+                {card.requiredByTemplate ? (
+                  <span className="editor-required-lock">Always shown in this template</span>
+                ) : (
+                  <Switch.Root
+                    checked={cardEnabled[card.id] ?? false}
+                    aria-label={`Display ${card.title}`}
+                    className="editor-switch"
+                    onCheckedChange={(checked) => {
+                      onCardEnabledChange(card.id, checked);
+                    }}
+                  >
+                    <Switch.Thumb className="editor-switch-thumb" />
+                  </Switch.Root>
+                )}
               </label>
 
               {statusLines.map((line) => (

@@ -194,15 +194,26 @@ test("shows card state messaging for auto, placeholder, and required missing val
   expect(within(placeholderCard!).getByText("Location unavailable")).toBeInTheDocument();
   expect(within(placeholderCard!).getByText(/missing from photo metadata/i)).toBeInTheDocument();
   expect(within(placeholderCard!).getByText(/required by template/i)).toBeInTheDocument();
+  expect(
+    within(autoCard!).queryByRole("switch", { name: /display camera model/i }),
+  ).not.toBeInTheDocument();
+  expect(within(autoCard!).getByText(/always shown in this template/i)).toBeInTheDocument();
 });
 
-test("toggles redesigned data cards and stores the enabled state in app state", async () => {
+test("required data cards are non-collapsible in the redesigned card ui", async () => {
   const user = userEvent.setup();
   const { store } = await renderLoadedEditorScreen();
+  const cameraCard = screen.getByRole("heading", { name: /camera model/i }).closest("article");
 
-  await user.click(screen.getByRole("switch", { name: /display camera model/i }));
+  expect(cameraCard).not.toBeNull();
+  expect(
+    within(cameraCard!).queryByRole("switch", { name: /display camera model/i }),
+  ).not.toBeInTheDocument();
+  expect(store.get(editorCardEnabledAtom)["camera-model"]).toBe(true);
 
-  expect(store.get(editorCardEnabledAtom)["camera-model"]).toBe(false);
+  await user.click(within(cameraCard!).getByLabelText(/manual value for camera model/i));
+
+  expect(store.get(editorCardEnabledAtom)["camera-model"]).toBe(true);
 });
 
 test("accepts manual overrides through the wrapped input and surfaces manual card state", async () => {

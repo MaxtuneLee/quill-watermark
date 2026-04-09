@@ -302,9 +302,31 @@ test("style control actions persist rail values in app state across later sessio
     canvasPadding: 64,
     imageFit: "contain",
   });
+  expect(store.get(editorControlsAtom)).not.toHaveProperty("metadataOrder");
 });
 
-test("card enabled actions update card state and preview field visibility", async () => {
+test("editor ignores control ids that are outside the visible style contract", async () => {
+  const store = createStore();
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+
+  const before = store.get(editorControlsAtom);
+
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: {
+      id: "metadataOrder" as never,
+      value: "brand-first" as never,
+    },
+  });
+
+  expect(store.get(editorControlsAtom)).toEqual(before);
+});
+
+test("card enabled actions keep required cards visible in preview state", async () => {
   const store = createStore();
 
   await store.set(editorDispatchAtom, {
@@ -322,9 +344,10 @@ test("card enabled actions update card state and preview field visibility", asyn
   });
 
   expect(store.get(dataCardsAtom).find((card) => card.id === "camera-model")).toMatchObject({
-    enabled: false,
+    enabled: true,
+    requiredByTemplate: true,
   });
-  expect(store.get(editorPreviewResolvedFieldsAtom).cameraModel.value).toBe(null);
+  expect(store.get(editorPreviewResolvedFieldsAtom).cameraModel.value).toBe("Contax T3");
 });
 
 test("required placeholder cards stay enabled and expose missing-value state through app state", async () => {
@@ -358,6 +381,36 @@ test("required placeholder cards stay enabled and expose missing-value state thr
     previewValue: "Location unavailable",
     requiredByTemplate: true,
   });
+});
+
+test("required cards cannot be disabled through the reducer and stay visible in preview fields", async () => {
+  const store = createStore();
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, {
+    type: "set-field-override",
+    fieldId: "cameraModel",
+    value: "Contax T3",
+  });
+
+  expect(store.get(dataCardsAtom).find((card) => card.id === "camera-model")).toMatchObject({
+    enabled: true,
+    requiredByTemplate: true,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-card-enabled",
+    payload: { id: "camera-model", enabled: false },
+  });
+
+  expect(store.get(dataCardsAtom).find((card) => card.id === "camera-model")).toMatchObject({
+    enabled: true,
+    requiredByTemplate: true,
+  });
+  expect(store.get(editorPreviewResolvedFieldsAtom).cameraModel.value).toBe("Contax T3");
 });
 
 test("manual overrides and card visibility remain app-owned across later metadata updates", async () => {
@@ -416,7 +469,8 @@ test("manual overrides and card visibility remain app-owned across later metadat
     value: "By Harbor Studio",
   });
   expect(store.get(dataCardsAtom).find((card) => card.id === "author")).toMatchObject({
-    enabled: false,
+    enabled: true,
+    requiredByTemplate: true,
     mode: "manual",
     previewValue: "By Harbor Studio",
   });

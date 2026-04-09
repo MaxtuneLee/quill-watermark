@@ -5,7 +5,6 @@ export type OutputRatio = "original" | "1:1" | "4:5" | "3:2" | "16:9" | "9:16";
 export type SurfaceStyle = "none" | "border" | "shadow" | "border-shadow";
 export type TypographyTheme = "signature" | "editorial" | "mono";
 export type BrandPosition = "bottom-left" | "bottom-right" | "center";
-export type MetadataOrder = "capture-first" | "brand-first";
 export type ExportFormat = "png" | "jpeg" | "webp";
 export type ExportMultiplier = 1 | 2 | 3;
 
@@ -17,7 +16,6 @@ export interface StylePanelValues {
   surfaceStyle: SurfaceStyle;
   typographyTheme: TypographyTheme;
   brandPosition: BrandPosition;
-  metadataOrder: MetadataOrder;
 }
 
 export interface ExportPanelValues {
@@ -27,6 +25,19 @@ export interface ExportPanelValues {
 
 export type StyleControlId = keyof StylePanelValues;
 export type StyleControlValue = StylePanelValues[StyleControlId];
+export const styleControlIds = [
+  "outputRatio",
+  "imageFit",
+  "canvasPadding",
+  "cornerRadius",
+  "surfaceStyle",
+  "typographyTheme",
+  "brandPosition",
+] as const satisfies readonly StyleControlId[];
+
+export function isStyleControlId(value: string): value is StyleControlId {
+  return styleControlIds.includes(value as StyleControlId);
+}
 
 function findPhotoNode(layout: TemplateLayoutNode): TemplateLayoutNode | null {
   if (layout.type === "image" && layout.binding === "photo") {
@@ -68,7 +79,6 @@ export function createInitialControlValues(template: WatermarkTemplate): StylePa
     surfaceStyle: template.family === "Card Frame" ? "border-shadow" : "shadow",
     typographyTheme: template.family === "Minimal White Space" ? "editorial" : "signature",
     brandPosition: template.family === "Center Brand" ? "center" : "bottom-left",
-    metadataOrder: "capture-first",
   };
 }
 

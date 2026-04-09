@@ -9,6 +9,7 @@ import {
   createInitialCardEnabled,
   createInitialControlValues,
   createInitialExportValues,
+  isStyleControlId,
 } from "../features/editor/panels/panel-state";
 import type { NormalizedMetadata } from "../services/metadata/types";
 import { extractMetadata } from "../services/metadata/extract-metadata";
@@ -477,7 +478,7 @@ export const dataCardsAtom = atom<TemplateDataCard[]>((get) => {
 
   return cards.map((card) => ({
     ...card,
-    enabled: cardEnabled[card.id] ?? card.enabled,
+    enabled: card.requiredByTemplate ? true : (cardEnabled[card.id] ?? card.enabled),
   }));
 });
 
@@ -670,6 +671,10 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
         return;
       }
 
+      if (!isStyleControlId(action.payload.id)) {
+        return;
+      }
+
       const template = templateMap.get(currentSession.templateId);
       if (!template) {
         return;
@@ -700,6 +705,16 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
     case "editor/set-card-enabled": {
       const currentSession = get(appSessionAtom);
       if (currentSession.screen === "library") {
+        return;
+      }
+
+      const template = templateMap.get(currentSession.templateId);
+      if (!template) {
+        return;
+      }
+
+      const cardGroup = template.fieldGroups.find((group) => group.id === action.payload.id);
+      if ((cardGroup?.requiredByTemplate ?? true) && action.payload.enabled === false) {
         return;
       }
 
