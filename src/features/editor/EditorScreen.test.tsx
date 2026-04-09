@@ -1,6 +1,13 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import { Provider, createStore } from "jotai";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test } from "vite-plus/test";
+import {
+  editorCardEnabledAtom,
+  editorControlsAtom,
+  editorDispatchAtom,
+  fieldOverridesAtom,
+} from "../../app/app-state";
 import { EditorScreen } from "./EditorScreen";
 import { makeLoadedEditorProps, makePendingEditorProps } from "./test-fixtures";
 
@@ -28,48 +35,83 @@ test("shows desktop style, preview, export, and data panels after a photo is loa
 test("updates canvas padding from the style panel", async () => {
   const user = userEvent.setup();
   const props = makeLoadedEditorProps();
+  const store = createStore();
 
-  render(<EditorScreen {...props} />);
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: props.template.id,
+  });
+
+  render(
+    <Provider store={store}>
+      <EditorScreen
+        {...props}
+        dispatch={(action) => {
+          void store.set(editorDispatchAtom, action);
+        }}
+      />
+    </Provider>,
+  );
 
   const input = screen.getByLabelText(/canvas padding/i);
   await user.clear(input);
   await user.type(input, "64");
 
-  expect(props.dispatch).toHaveBeenCalledWith({
-    type: "editor/set-control",
-    payload: { id: "canvasPadding", value: 64 },
-  });
+  expect(store.get(editorControlsAtom).canvasPadding).toBe(64);
 });
 
 test("toggles a data card from the data panel", async () => {
   const user = userEvent.setup();
   const props = makeLoadedEditorProps();
+  const store = createStore();
 
-  render(<EditorScreen {...props} />);
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: props.template.id,
+  });
+
+  render(
+    <Provider store={store}>
+      <EditorScreen
+        {...props}
+        dispatch={(action) => {
+          void store.set(editorDispatchAtom, action);
+        }}
+      />
+    </Provider>,
+  );
 
   await user.click(screen.getByRole("switch", { name: /show camera model/i }));
 
-  expect(props.dispatch).toHaveBeenCalledWith({
-    type: "editor/set-card-enabled",
-    payload: { id: "camera-model", enabled: false },
-  });
+  expect(store.get(editorCardEnabledAtom)["camera-model"]).toBe(false);
 });
 
 test("updates a manual override from the data panel", async () => {
   const user = userEvent.setup();
   const props = makeLoadedEditorProps();
+  const store = createStore();
 
-  render(<EditorScreen {...props} />);
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: props.template.id,
+  });
+
+  render(
+    <Provider store={store}>
+      <EditorScreen
+        {...props}
+        dispatch={(action) => {
+          void store.set(editorDispatchAtom, action);
+        }}
+      />
+    </Provider>,
+  );
 
   const input = screen.getByLabelText(/author override/i);
   await user.clear(input);
   await user.type(input, "By Harbor Studio");
 
-  expect(props.dispatch).toHaveBeenCalledWith({
-    type: "set-field-override",
-    fieldId: "authorLine",
-    value: "By Harbor Studio",
-  });
+  expect(store.get(fieldOverridesAtom).authorLine).toBe("By Harbor Studio");
 });
 
 test("shows an explicit import error in pending-image state", () => {

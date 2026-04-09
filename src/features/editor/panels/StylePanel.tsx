@@ -1,4 +1,4 @@
-import { Button } from "../../../components/ui";
+import { Button, Input } from "../../../components/ui";
 import { SlidersHorizontalIcon } from "../../../icons/ui-icons";
 import type { WatermarkTemplate } from "../../../template-engine/types";
 import type { StylePanelValues } from "./panel-state";
@@ -92,7 +92,7 @@ export function StylePanel({ template, values, onControlChange }: StylePanelProp
       <div className="editor-field-grid">
         <label className="editor-number-field">
           <span>Canvas padding</span>
-          <input
+          <Input
             type="number"
             min={0}
             max={160}
@@ -105,7 +105,7 @@ export function StylePanel({ template, values, onControlChange }: StylePanelProp
         </label>
         <label className="editor-number-field">
           <span>Corner radius</span>
-          <input
+          <Input
             type="number"
             min={0}
             max={80}

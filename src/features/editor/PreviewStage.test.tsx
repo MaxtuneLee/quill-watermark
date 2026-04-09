@@ -195,3 +195,67 @@ test("injects decoded photo intrinsic dimensions into resolveLayout input", asyn
   }
   expect(imageNode.intrinsicSize).toEqual({ width: 900, height: 1600 });
 });
+
+test("consumes editor control state when resolving preview layout", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+  const resolveLayoutSpy = vi.spyOn(layoutService, "resolveLayout");
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "canvasPadding", value: 64 },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "imageFit", value: "contain" },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "outputRatio", value: "1:1" },
+  });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(resolveLayoutSpy).toHaveBeenCalled();
+  });
+
+  const resolveLayoutInput = resolveLayoutSpy.mock.calls.at(-1)?.[0];
+  expect(resolveLayoutInput).toBeTruthy();
+  if (resolveLayoutInput === undefined) {
+    throw new Error("resolveLayout input was not captured.");
+  }
+
+  expect(resolveLayoutInput.canvas.padding).toBe(64);
+  expect(resolveLayoutInput.canvas.width).toBe(1200);
+  expect(resolveLayoutInput.canvas.height).toBe(1200);
+  if (resolveLayoutInput.layout.type !== "stack") {
+    throw new Error("Expected a stack root layout.");
+  }
+  const imageNode = resolveLayoutInput.layout.children.find((child) => child.type === "image");
+  expect(imageNode).toBeDefined();
+  if (imageNode === undefined || imageNode.type !== "image") {
+    throw new Error("Expected an image node in root children.");
+  }
+  expect(imageNode.fit).toBe("contain");
+});

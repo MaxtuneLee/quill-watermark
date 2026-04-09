@@ -1,8 +1,4 @@
-import type {
-  ResolvedFieldMap,
-  TemplateDataCard,
-  WatermarkTemplate,
-} from "../../../template-engine/types";
+import type { WatermarkTemplate } from "../../../template-engine/types";
 import type { TemplateLayoutNode } from "../../../template-engine/types";
 
 export type OutputRatio = "original" | "1:1" | "4:5" | "3:2" | "16:9" | "9:16";
@@ -27,13 +23,6 @@ export interface StylePanelValues {
 export interface ExportPanelValues {
   format: ExportFormat;
   multiplier: ExportMultiplier;
-}
-
-export interface EditorPanelState {
-  controls: StylePanelValues;
-  cardEnabled: Record<string, boolean>;
-  overrides: Record<string, string>;
-  export: ExportPanelValues;
 }
 
 function findPhotoNode(layout: TemplateLayoutNode): TemplateLayoutNode | null {
@@ -67,40 +56,27 @@ function resolveImageFit(template: WatermarkTemplate): "cover" | "contain" {
   return photoNode?.type === "image" ? (photoNode.fit ?? "cover") : "cover";
 }
 
-function buildCardEnabledState(cards: readonly TemplateDataCard[]): Record<string, boolean> {
-  return Object.fromEntries(cards.map((card) => [card.id, card.enabled]));
-}
-
-function buildOverrideState(resolvedFields: ResolvedFieldMap): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(resolvedFields)
-      .filter(([, field]) => field.mode === "manual" && typeof field.value === "string")
-      .map(([fieldId, field]) => [fieldId, field.value ?? ""]),
-  );
-}
-
-export function createInitialPanelState(
-  template: WatermarkTemplate,
-  dataCards: readonly TemplateDataCard[],
-  resolvedFields: ResolvedFieldMap,
-): EditorPanelState {
+export function createInitialControlValues(template: WatermarkTemplate): StylePanelValues {
   return {
-    controls: {
-      outputRatio: "original",
-      imageFit: resolveImageFit(template),
-      canvasPadding: resolveCanvasPadding(template),
-      cornerRadius: 18,
-      surfaceStyle: template.family === "Card Frame" ? "border-shadow" : "shadow",
-      typographyTheme: template.family === "Minimal White Space" ? "editorial" : "signature",
-      brandPosition: template.family === "Center Brand" ? "center" : "bottom-left",
-      metadataOrder: "capture-first",
-    },
-    cardEnabled: buildCardEnabledState(dataCards),
-    overrides: buildOverrideState(resolvedFields),
-    export: {
-      format: "png",
-      multiplier: 1,
-    },
+    outputRatio: "original",
+    imageFit: resolveImageFit(template),
+    canvasPadding: resolveCanvasPadding(template),
+    cornerRadius: 18,
+    surfaceStyle: template.family === "Card Frame" ? "border-shadow" : "shadow",
+    typographyTheme: template.family === "Minimal White Space" ? "editorial" : "signature",
+    brandPosition: template.family === "Center Brand" ? "center" : "bottom-left",
+    metadataOrder: "capture-first",
+  };
+}
+
+export function createInitialCardEnabled(template: WatermarkTemplate): Record<string, boolean> {
+  return Object.fromEntries(template.fieldGroups.map((group) => [group.id, true]));
+}
+
+export function createInitialExportValues(): ExportPanelValues {
+  return {
+    format: "png",
+    multiplier: 1,
   };
 }
 

@@ -1,16 +1,18 @@
 import { useAtomValue } from "jotai";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import {
   activeTemplateAtom,
+  editorControlsAtom,
   editorInstanceAtom,
-  editorResolvedFieldsAtom,
+  editorPreviewResolvedFieldsAtom,
 } from "../../app/app-state";
 import { resolveLayout } from "../../template-engine/layout/resolve-layout";
 import { loadImageAsset } from "../../template-engine/render/load-image-asset";
 import type { LoadedImageAsset } from "../../template-engine/render/load-image-asset";
 import { renderCanvas } from "../../template-engine/render/render-canvas";
 import type { RenderCanvasScene } from "../../template-engine/render/render-canvas";
-import type { TemplateLayoutNode } from "../../template-engine/types";
+import type { TemplateLayoutNode, WatermarkTemplate } from "../../template-engine/types";
+import type { StylePanelValues } from "./panels/panel-state";
 
 const PREVIEW_LONG_EDGE = 1200;
 
@@ -109,10 +111,120 @@ function withPhotoIntrinsicSize(
   };
 }
 
+function withPhotoFit(
+  layout: TemplateLayoutNode,
+  fit: StylePanelValues["imageFit"],
+): TemplateLayoutNode {
+  if (layout.type === "image") {
+    return layout.binding === "photo"
+      ? {
+          ...layout,
+          fit,
+        }
+      : layout;
+  }
+
+  if (layout.type === "text") {
+    return layout;
+  }
+
+  return {
+    ...layout,
+    children: layout.children.map((child) => withPhotoFit(child, fit)),
+  };
+}
+
+function withTypographyTheme(
+  layout: TemplateLayoutNode,
+  theme: StylePanelValues["typographyTheme"],
+): TemplateLayoutNode {
+  const family =
+    theme === "editorial" ? "Georgia" : theme === "mono" ? "SFMono-Regular" : "Avenir Next";
+
+  if (layout.type === "text") {
+    return {
+      ...layout,
+      font: layout.font.replace(/"[^"]+"/, `"${family}"`),
+    };
+  }
+
+  if (layout.type === "image") {
+    return layout;
+  }
+
+  return {
+    ...layout,
+    children: layout.children.map((child) => withTypographyTheme(child, theme)),
+  };
+}
+
+function withBrandPosition(
+  layout: TemplateLayoutNode,
+  position: StylePanelValues["brandPosition"],
+): TemplateLayoutNode {
+  if (layout.type === "text") {
+    if (layout.binding !== "brandLine") {
+      return layout;
+    }
+
+    return {
+      ...layout,
+      align: position === "center" ? "center" : position === "bottom-right" ? "right" : "left",
+    };
+  }
+
+  if (layout.type === "image") {
+    return layout;
+  }
+
+  return {
+    ...layout,
+    children: layout.children.map((child) => withBrandPosition(child, position)),
+  };
+}
+
+function withMetadataOrder(
+  layout: TemplateLayoutNode,
+  order: StylePanelValues["metadataOrder"],
+): TemplateLayoutNode {
+  if (layout.type === "text" || layout.type === "image") {
+    return layout;
+  }
+
+  const nextChildren = layout.children.map((child) => withMetadataOrder(child, order));
+  const brandNodes = nextChildren.filter(
+    (child) => child.type === "text" && child.binding === "brandLine",
+  );
+  const otherNodes = nextChildren.filter(
+    (child) => !(child.type === "text" && child.binding === "brandLine"),
+  );
+
+  return {
+    ...layout,
+    children:
+      order === "brand-first" ? [...brandNodes, ...otherNodes] : [...otherNodes, ...brandNodes],
+  };
+}
+
+function resolveAspectRatio(
+  template: WatermarkTemplate,
+  outputRatio: StylePanelValues["outputRatio"],
+): number | null {
+  if (outputRatio === "original") {
+    return template.canvas.aspectRatio === null
+      ? null
+      : template.canvas.aspectRatio.width / Math.max(template.canvas.aspectRatio.height, 1);
+  }
+
+  const [width, height] = outputRatio.split(":").map(Number);
+  return width / Math.max(height, 1);
+}
+
 export function PreviewStage() {
   const template = useAtomValue(activeTemplateAtom);
+  const controls = useAtomValue(editorControlsAtom);
   const instance = useAtomValue(editorInstanceAtom);
-  const resolvedFields = useAtomValue(editorResolvedFieldsAtom);
+  const resolvedFields = useAtomValue(editorPreviewResolvedFieldsAtom);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const zoomControlId = useId();
   const [viewMode, setViewMode] = useState<ViewMode>("fit");
@@ -198,14 +310,10 @@ export function PreviewStage() {
       setRenderState("loading");
 
       try {
-        const templateRatio =
-          template.canvas.aspectRatio === null
-            ? null
-            : template.canvas.aspectRatio.width / Math.max(template.canvas.aspectRatio.height, 1);
         const nextCanvasSize = resolveCanvasSize(
           decodedAsset.width,
           decodedAsset.height,
-          templateRatio,
+          resolveAspectRatio(template, controls.outputRatio),
         );
         const canvas = canvasRef.current;
         if (canvas === null) {
@@ -220,14 +328,28 @@ export function PreviewStage() {
           throw new Error("Canvas context unavailable.");
         }
 
+        const transformedLayout = withMetadataOrder(
+          withBrandPosition(
+            withTypographyTheme(
+              withPhotoFit(
+                withPhotoIntrinsicSize(template.layout, decodedAsset.width, decodedAsset.height),
+                controls.imageFit,
+              ),
+              controls.typographyTheme,
+            ),
+            controls.brandPosition,
+          ),
+          controls.metadataOrder,
+        );
+
         const layoutResult = resolveLayout({
           canvas: {
             width: nextCanvasSize.width,
             height: nextCanvasSize.height,
-            padding: template.canvas.padding,
+            padding: controls.canvasPadding,
             background: template.canvas.background,
           },
-          layout: withPhotoIntrinsicSize(template.layout, decodedAsset.width, decodedAsset.height),
+          layout: transformedLayout,
           resolvedFields: Object.fromEntries(
             Object.entries(resolvedFields).map(([fieldId, field]) => [
               fieldId,
@@ -289,7 +411,7 @@ export function PreviewStage() {
     return () => {
       disposed = true;
     };
-  }, [decodedAsset, instance, resolvedFields, template]);
+  }, [controls, decodedAsset, instance, resolvedFields, template]);
 
   if (template === null || instance === null) {
     return (
@@ -310,6 +432,19 @@ export function PreviewStage() {
           display: "block",
           maxWidth: "none",
         };
+  const previewFrameStyle = {
+    overflow: "auto",
+    maxHeight: "70vh",
+    border:
+      controls.surfaceStyle === "border" || controls.surfaceStyle === "border-shadow"
+        ? "1px solid var(--color-border)"
+        : "1px solid transparent",
+    borderRadius: `${controls.cornerRadius}px`,
+    boxShadow:
+      controls.surfaceStyle === "shadow" || controls.surfaceStyle === "border-shadow"
+        ? "0 18px 38px rgba(23, 23, 23, 0.14)"
+        : "none",
+  } satisfies CSSProperties;
 
   return (
     <section aria-label="Preview stage" role="region">
@@ -342,7 +477,7 @@ export function PreviewStage() {
         </label>
         <output aria-live="polite">{zoomPercent}%</output>
       </div>
-      <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid var(--color-border)" }}>
+      <div style={previewFrameStyle}>
         <canvas ref={canvasRef} aria-label="Template preview" role="img" style={canvasStyle} />
       </div>
       {renderState === "loading" ? <p>Rendering preview…</p> : null}

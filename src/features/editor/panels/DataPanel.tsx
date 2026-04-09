@@ -1,4 +1,4 @@
-import { Switch } from "../../../components/ui";
+import { Input, Switch } from "../../../components/ui";
 import { DatabaseIcon } from "../../../icons/ui-icons";
 import type { ResolvedFieldMap, TemplateDataCard } from "../../../template-engine/types";
 
@@ -83,7 +83,7 @@ export function DataPanel({
               {primaryBinding ? (
                 <label className="editor-override-field">
                   <span>{card.title} override</span>
-                  <input
+                  <Input
                     type="text"
                     aria-label={`${card.title} override`}
                     value={overrideValue}

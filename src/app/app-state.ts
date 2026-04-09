@@ -1,4 +1,10 @@
 import { atom } from "jotai";
+import type { ExportPanelValues, StylePanelValues } from "../features/editor/panels/panel-state";
+import {
+  createInitialCardEnabled,
+  createInitialControlValues,
+  createInitialExportValues,
+} from "../features/editor/panels/panel-state";
 import type { NormalizedMetadata } from "../services/metadata/types";
 import { extractMetadata } from "../services/metadata/extract-metadata";
 import { createDataCards } from "../template-engine/schema/create-data-cards";
@@ -23,6 +29,9 @@ interface TemplateScopedSession {
   templateId: string;
   userSourceValues: Record<string, string>;
   fieldOverrides: Record<string, string>;
+  controls: StylePanelValues;
+  cardEnabled: Record<string, boolean>;
+  exportOptions: ExportPanelValues;
 }
 
 interface LibrarySession {
@@ -116,6 +125,9 @@ function buildPendingImageSession(
   importError: string | null,
   userSourceValues: Record<string, string>,
   fieldOverrides: Record<string, string>,
+  controls: StylePanelValues,
+  cardEnabled: Record<string, boolean>,
+  exportOptions: ExportPanelValues,
 ): EditorPendingImageSession {
   return {
     screen: "editor-pending-image",
@@ -123,6 +135,9 @@ function buildPendingImageSession(
     importError,
     userSourceValues,
     fieldOverrides,
+    controls,
+    cardEnabled,
+    exportOptions,
   };
 }
 
@@ -131,6 +146,9 @@ function buildEditorSession(
   instance: EditorInstance,
   userSourceValues: Record<string, string>,
   fieldOverrides: Record<string, string>,
+  controls: StylePanelValues,
+  cardEnabled: Record<string, boolean>,
+  exportOptions: ExportPanelValues,
 ): EditorSession {
   return {
     screen: "editor",
@@ -138,7 +156,54 @@ function buildEditorSession(
     instance,
     userSourceValues,
     fieldOverrides,
+    controls,
+    cardEnabled,
+    exportOptions,
   };
+}
+
+function createDefaultTemplateScopedState(template: WatermarkTemplate) {
+  return {
+    controls: createInitialControlValues(template),
+    cardEnabled: createInitialCardEnabled(template),
+    exportOptions: createInitialExportValues(),
+  };
+}
+
+function updateTemplateScopedSession(
+  session: EditorPendingImageSession | EditorSession,
+  overrides: Partial<TemplateScopedSession> = {},
+): EditorPendingImageSession | EditorSession {
+  const nextScopedState = {
+    templateId: overrides.templateId ?? session.templateId,
+    userSourceValues: overrides.userSourceValues ?? session.userSourceValues,
+    fieldOverrides: overrides.fieldOverrides ?? session.fieldOverrides,
+    controls: overrides.controls ?? session.controls,
+    cardEnabled: overrides.cardEnabled ?? session.cardEnabled,
+    exportOptions: overrides.exportOptions ?? session.exportOptions,
+  };
+
+  if (session.screen === "editor") {
+    return buildEditorSession(
+      nextScopedState.templateId,
+      session.instance,
+      nextScopedState.userSourceValues,
+      nextScopedState.fieldOverrides,
+      nextScopedState.controls,
+      nextScopedState.cardEnabled,
+      nextScopedState.exportOptions,
+    );
+  }
+
+  return buildPendingImageSession(
+    nextScopedState.templateId,
+    session.importError,
+    nextScopedState.userSourceValues,
+    nextScopedState.fieldOverrides,
+    nextScopedState.controls,
+    nextScopedState.cardEnabled,
+    nextScopedState.exportOptions,
+  );
 }
 
 function formatExposureValue(prefix: string, value: number | null, suffix = ""): string | null {
@@ -316,6 +381,38 @@ export const fieldOverridesAtom = atom<Record<string, string>>((get) => {
   return session.fieldOverrides;
 });
 
+export const editorControlsAtom = atom<StylePanelValues>((get) => {
+  const session = get(appSessionAtom);
+  const template = get(activeTemplateAtom);
+
+  if (session.screen === "library" || template === null) {
+    return createInitialControlValues(templates[0]);
+  }
+
+  return session.controls;
+});
+
+export const editorCardEnabledAtom = atom<Record<string, boolean>>((get) => {
+  const session = get(appSessionAtom);
+  const template = get(activeTemplateAtom);
+
+  if (session.screen === "library" || template === null) {
+    return createInitialCardEnabled(templates[0]);
+  }
+
+  return session.cardEnabled;
+});
+
+export const editorExportOptionsAtom = atom<ExportPanelValues>((get) => {
+  const session = get(appSessionAtom);
+
+  if (session.screen === "library") {
+    return createInitialExportValues();
+  }
+
+  return session.exportOptions;
+});
+
 export const resolvedFieldsAtom = atom<ResolvedFieldMap>((get) => {
   const template = get(activeTemplateAtom);
   if (!template) {
@@ -339,20 +436,65 @@ export const dataCardsAtom = atom<TemplateDataCard[]>((get) => {
     return [];
   }
 
-  return createDataCards({
+  const cards = createDataCards({
     groups: template.fieldGroups,
     resolvedFields: get(resolvedFieldsAtom),
   });
+
+  const cardEnabled = get(editorCardEnabledAtom);
+
+  return cards.map((card) => ({
+    ...card,
+    enabled: cardEnabled[card.id] ?? card.enabled,
+  }));
 });
 
 export const editorResolvedFieldsAtom = resolvedFieldsAtom;
 export const editorDataCardsAtom = dataCardsAtom;
+export const editorPreviewResolvedFieldsAtom = atom<ResolvedFieldMap>((get) => {
+  const resolvedFields = get(resolvedFieldsAtom);
+  const dataCards = get(dataCardsAtom);
+
+  const disabledBindings = new Set(
+    dataCards.filter((card) => !card.enabled).flatMap((card) => card.bindings),
+  );
+
+  return Object.fromEntries(
+    Object.entries(resolvedFields).map(([fieldId, field]) => [
+      fieldId,
+      disabledBindings.has(fieldId)
+        ? {
+            ...field,
+            value: null,
+          }
+        : field,
+    ]),
+  );
+});
 
 export const editorDispatchAtom = atom(null, async (get, set, action: EditorAction) => {
   switch (action.type) {
-    case "select-template":
-      set(appSessionAtom, buildPendingImageSession(action.templateId, null, {}, {}));
+    case "select-template": {
+      const template = templateMap.get(action.templateId);
+      if (!template) {
+        return;
+      }
+
+      const defaults = createDefaultTemplateScopedState(template);
+      set(
+        appSessionAtom,
+        buildPendingImageSession(
+          action.templateId,
+          null,
+          {},
+          {},
+          defaults.controls,
+          defaults.cardEnabled,
+          defaults.exportOptions,
+        ),
+      );
       return;
+    }
     case "import-image": {
       const currentSession = get(appSessionAtom);
       if (currentSession.screen === "library") {
@@ -373,6 +515,9 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
             },
             currentSession.userSourceValues,
             currentSession.fieldOverrides,
+            currentSession.controls,
+            currentSession.cardEnabled,
+            currentSession.exportOptions,
           ),
         );
       } catch {
@@ -383,6 +528,9 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
             IMAGE_IMPORT_ERROR_MESSAGE,
             currentSession.userSourceValues,
             currentSession.fieldOverrides,
+            currentSession.controls,
+            currentSession.cardEnabled,
+            currentSession.exportOptions,
           ),
         );
       }
@@ -402,6 +550,9 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
           null,
           currentSession.userSourceValues,
           currentSession.fieldOverrides,
+          currentSession.controls,
+          currentSession.cardEnabled,
+          currentSession.exportOptions,
         ),
       );
       return;
@@ -420,30 +571,13 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
       if (trimmedValue.length === 0) {
         delete nextFieldOverrides[action.fieldId];
       } else {
-        nextFieldOverrides[action.fieldId] = trimmedValue;
+        nextFieldOverrides[action.fieldId] = action.value;
       }
 
-      if (currentSession.screen === "editor") {
-        set(
-          appSessionAtom,
-          buildEditorSession(
-            currentSession.templateId,
-            currentSession.instance,
-            currentSession.userSourceValues,
-            nextFieldOverrides,
-          ),
-        );
-      } else {
-        set(
-          appSessionAtom,
-          buildPendingImageSession(
-            currentSession.templateId,
-            currentSession.importError,
-            currentSession.userSourceValues,
-            nextFieldOverrides,
-          ),
-        );
-      }
+      set(
+        appSessionAtom,
+        updateTemplateScopedSession(currentSession, { fieldOverrides: nextFieldOverrides }),
+      );
       return;
     }
     case "set-user-source-value": {
@@ -460,30 +594,13 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
       if (trimmedValue.length === 0) {
         delete nextUserSourceValues[action.path];
       } else {
-        nextUserSourceValues[action.path] = trimmedValue;
+        nextUserSourceValues[action.path] = action.value;
       }
 
-      if (currentSession.screen === "editor") {
-        set(
-          appSessionAtom,
-          buildEditorSession(
-            currentSession.templateId,
-            currentSession.instance,
-            nextUserSourceValues,
-            currentSession.fieldOverrides,
-          ),
-        );
-      } else {
-        set(
-          appSessionAtom,
-          buildPendingImageSession(
-            currentSession.templateId,
-            currentSession.importError,
-            nextUserSourceValues,
-            currentSession.fieldOverrides,
-          ),
-        );
-      }
+      set(
+        appSessionAtom,
+        updateTemplateScopedSession(currentSession, { userSourceValues: nextUserSourceValues }),
+      );
       return;
     }
     case "replace-metadata": {
@@ -502,13 +619,63 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
           },
           currentSession.userSourceValues,
           currentSession.fieldOverrides,
+          currentSession.controls,
+          currentSession.cardEnabled,
+          currentSession.exportOptions,
         ),
       );
       return;
     }
-    case "editor/set-control":
-    case "editor/set-card-enabled":
-    case "editor/set-export-option":
+    case "editor/set-control": {
+      const currentSession = get(appSessionAtom);
+      if (currentSession.screen === "library") {
+        return;
+      }
+
+      set(
+        appSessionAtom,
+        updateTemplateScopedSession(currentSession, {
+          controls: {
+            ...currentSession.controls,
+            [action.payload.id]: action.payload.value,
+          } as StylePanelValues,
+        }),
+      );
       return;
+    }
+    case "editor/set-card-enabled": {
+      const currentSession = get(appSessionAtom);
+      if (currentSession.screen === "library") {
+        return;
+      }
+
+      set(
+        appSessionAtom,
+        updateTemplateScopedSession(currentSession, {
+          cardEnabled: {
+            ...currentSession.cardEnabled,
+            [action.payload.id]: action.payload.enabled,
+          },
+        }),
+      );
+      return;
+    }
+    case "editor/set-export-option": {
+      const currentSession = get(appSessionAtom);
+      if (currentSession.screen === "library") {
+        return;
+      }
+
+      set(
+        appSessionAtom,
+        updateTemplateScopedSession(currentSession, {
+          exportOptions: {
+            ...currentSession.exportOptions,
+            [action.payload.id]: action.payload.value,
+          } as ExportPanelValues,
+        }),
+      );
+      return;
+    }
   }
 });

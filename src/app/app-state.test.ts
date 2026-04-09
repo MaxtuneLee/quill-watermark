@@ -5,9 +5,12 @@ import * as metadataService from "../services/metadata/extract-metadata";
 import {
   appScreenAtom,
   dataCardsAtom,
+  editorControlsAtom,
   editorDispatchAtom,
+  editorExportOptionsAtom,
   editorImportErrorAtom,
   editorInstanceAtom,
+  editorPreviewResolvedFieldsAtom,
   resolvedFieldsAtom,
   selectedTemplateIdAtom,
 } from "./app-state";
@@ -242,5 +245,72 @@ test("built-in shot-time field resolves from imported metadata for templates tha
   expect(store.get(dataCardsAtom).find((card) => card.id === "shot-time")).toMatchObject({
     enabled: true,
     mode: "auto",
+  });
+});
+
+test("editor control actions persist style values in editor state", async () => {
+  const store = createStore();
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "canvasPadding", value: 64 },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "imageFit", value: "contain" },
+  });
+
+  expect(store.get(editorControlsAtom)).toMatchObject({
+    canvasPadding: 64,
+    imageFit: "contain",
+  });
+});
+
+test("card enabled actions update card state and preview field visibility", async () => {
+  const store = createStore();
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, {
+    type: "set-field-override",
+    fieldId: "cameraModel",
+    value: "Contax T3",
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-card-enabled",
+    payload: { id: "camera-model", enabled: false },
+  });
+
+  expect(store.get(dataCardsAtom).find((card) => card.id === "camera-model")).toMatchObject({
+    enabled: false,
+  });
+  expect(store.get(editorPreviewResolvedFieldsAtom).cameraModel.value).toBe(null);
+});
+
+test("export option actions persist export settings in editor state", async () => {
+  const store = createStore();
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-export-option",
+    payload: { id: "format", value: "webp" },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-export-option",
+    payload: { id: "multiplier", value: 3 },
+  });
+
+  expect(store.get(editorExportOptionsAtom)).toMatchObject({
+    format: "webp",
+    multiplier: 3,
   });
 });

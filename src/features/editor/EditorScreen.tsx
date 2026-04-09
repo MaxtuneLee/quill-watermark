@@ -1,7 +1,10 @@
 import { useAtomValue } from "jotai";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   editorDataCardsAtom,
+  editorControlsAtom,
+  editorExportOptionsAtom,
+  fieldOverridesAtom,
   editorResolvedFieldsAtom,
   type EditorAction,
   type EditorInstance,
@@ -15,13 +18,7 @@ import { PreviewStage } from "./PreviewStage";
 import "./editor.css";
 import { DataPanel } from "./panels/DataPanel";
 import { ExportPanel } from "./panels/ExportPanel";
-import type {
-  EditorPanelState,
-  ExportFormat,
-  ExportMultiplier,
-  StylePanelValues,
-} from "./panels/panel-state";
-import { createInitialPanelState } from "./panels/panel-state";
+import type { ExportFormat, ExportMultiplier, StylePanelValues } from "./panels/panel-state";
 import { StylePanel } from "./panels/StylePanel";
 
 interface EditorScreenProps {
@@ -124,35 +121,17 @@ export function EditorScreen({
   resolvedFields,
 }: EditorScreenProps) {
   const atomDataCards = useAtomValue(editorDataCardsAtom);
+  const controlValues = useAtomValue(editorControlsAtom);
+  const exportValues = useAtomValue(editorExportOptionsAtom);
+  const fieldOverrides = useAtomValue(fieldOverridesAtom);
   const atomResolvedFields = useAtomValue(editorResolvedFieldsAtom);
   const activeDataCards = dataCards ?? atomDataCards;
   const activeResolvedFields = resolvedFields ?? atomResolvedFields;
-  const stateKey = useMemo(
-    () => `${template.id}:${activeDataCards.map((card) => card.id).join("|")}`,
-    [template.id, activeDataCards],
-  );
-  const [panelState, setPanelState] = useState<EditorPanelState>(() =>
-    createInitialPanelState(template, activeDataCards, activeResolvedFields),
-  );
-  const [exportStatusMessage, setExportStatusMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    setPanelState(createInitialPanelState(template, activeDataCards, activeResolvedFields));
-    setExportStatusMessage(null);
-  }, [stateKey, template, activeDataCards, activeResolvedFields]);
 
   const handleControlChange = (
     id: keyof StylePanelValues,
     value: StylePanelValues[keyof StylePanelValues],
   ) => {
-    setPanelState((currentState) => ({
-      ...currentState,
-      controls: {
-        ...currentState.controls,
-        [id]: value,
-      },
-    }));
-
     void dispatch({
       type: "editor/set-control",
       payload: { id, value },
@@ -160,14 +139,6 @@ export function EditorScreen({
   };
 
   const handleCardEnabledChange = (cardId: string, enabled: boolean) => {
-    setPanelState((currentState) => ({
-      ...currentState,
-      cardEnabled: {
-        ...currentState.cardEnabled,
-        [cardId]: enabled,
-      },
-    }));
-
     void dispatch({
       type: "editor/set-card-enabled",
       payload: { id: cardId, enabled },
@@ -175,14 +146,6 @@ export function EditorScreen({
   };
 
   const handleOverrideChange = (fieldId: string, value: string) => {
-    setPanelState((currentState) => ({
-      ...currentState,
-      overrides: {
-        ...currentState.overrides,
-        [fieldId]: value,
-      },
-    }));
-
     void dispatch({
       type: "set-field-override",
       fieldId,
@@ -194,14 +157,6 @@ export function EditorScreen({
     id: "format" | "multiplier",
     value: ExportFormat | ExportMultiplier,
   ) => {
-    setPanelState((currentState) => ({
-      ...currentState,
-      export: {
-        ...currentState.export,
-        [id]: value,
-      },
-    }));
-
     void dispatch({
       type: "editor/set-export-option",
       payload: { id, value },
@@ -216,21 +171,23 @@ export function EditorScreen({
       throw new Error("Preview canvas is not ready yet.");
     }
 
-    const scaledCanvas = createScaledCanvas(previewCanvas, panelState.export.multiplier);
+    const scaledCanvas = createScaledCanvas(previewCanvas, exportValues.multiplier);
     return exportImage({
       canvas: scaledCanvas,
       fileBaseName: instance?.sourceFile.name.replace(/\.[^.]+$/, "") ?? "quill-watermark",
-      mimeType: mimeTypeFromFormat(panelState.export.format),
-      quality: qualityFromFormat(panelState.export.format),
+      mimeType: mimeTypeFromFormat(exportValues.format),
+      quality: qualityFromFormat(exportValues.format),
     });
   };
+
+  const [exportStatusMessage, setExportStatusMessage] = useState<string | null>(null);
 
   const handleExport = async () => {
     try {
       const exportedImage = await buildExportedImage();
       downloadExport(exportedImage.blob, exportedImage.fileName);
       setExportStatusMessage(
-        `Exported ${panelState.export.format.toUpperCase()} at ${panelState.export.multiplier}x.`,
+        `Exported ${exportValues.format.toUpperCase()} at ${exportValues.multiplier}x.`,
       );
     } catch (error) {
       setExportStatusMessage(error instanceof Error ? error.message : "Unable to export preview.");
@@ -267,7 +224,7 @@ export function EditorScreen({
           <div className="editor-side-column">
             <StylePanel
               template={template}
-              values={panelState.controls}
+              values={controlValues}
               onControlChange={handleControlChange}
             />
           </div>
@@ -276,7 +233,7 @@ export function EditorScreen({
           </div>
           <div className="editor-side-column">
             <ExportPanel
-              values={panelState.export}
+              values={exportValues}
               statusMessage={exportStatusMessage}
               onFormatChange={(value) => {
                 handleExportOptionChange("format", value);
@@ -290,8 +247,10 @@ export function EditorScreen({
             <DataPanel
               dataCards={activeDataCards}
               resolvedFields={activeResolvedFields}
-              cardEnabled={panelState.cardEnabled}
-              overrides={panelState.overrides}
+              cardEnabled={Object.fromEntries(
+                activeDataCards.map((card) => [card.id, card.enabled]),
+              )}
+              overrides={fieldOverrides}
               onCardEnabledChange={handleCardEnabledChange}
               onOverrideChange={handleOverrideChange}
             />
