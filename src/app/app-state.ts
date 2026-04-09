@@ -1,5 +1,10 @@
 import { atom } from "jotai";
-import type { ExportPanelValues, StylePanelValues } from "../features/editor/panels/panel-state";
+import type {
+  ExportPanelValues,
+  StyleControlId,
+  StyleControlValue,
+  StylePanelValues,
+} from "../features/editor/panels/panel-state";
 import {
   createInitialCardEnabled,
   createInitialControlValues,
@@ -83,8 +88,8 @@ export type EditorAction =
   | {
       type: "editor/set-control";
       payload: {
-        id: string;
-        value: string | number | boolean;
+        id: StyleControlId;
+        value: StyleControlValue;
       };
     }
   | {

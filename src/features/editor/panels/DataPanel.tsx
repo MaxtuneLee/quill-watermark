@@ -1,6 +1,10 @@
 import { Input, Switch } from "../../../components/ui";
 import { DatabaseIcon } from "../../../icons/ui-icons";
-import type { ResolvedFieldMap, TemplateDataCard } from "../../../template-engine/types";
+import type {
+  ResolvedField,
+  ResolvedFieldMap,
+  TemplateDataCard,
+} from "../../../template-engine/types";
 
 interface DataPanelProps {
   dataCards: readonly TemplateDataCard[];
@@ -22,6 +26,45 @@ function formatMode(mode: TemplateDataCard["mode"]): string {
   }
 }
 
+function resolvePlaceholderMessage(field: ResolvedField | undefined): string {
+  switch (field?.source) {
+    case "exif":
+    case "gps":
+    case "derived":
+      return "Missing from photo metadata.";
+    case "user":
+      return "Waiting for a manual value.";
+    default:
+      return "Placeholder copy is currently in use.";
+  }
+}
+
+function resolveStatusLines(card: TemplateDataCard, field: ResolvedField | undefined): string[] {
+  const lines: string[] = [];
+
+  if (card.mode === "manual") {
+    lines.push("Manual value active.");
+  }
+
+  if (card.mode === "auto") {
+    lines.push("Resolved automatically.");
+  }
+
+  if (card.mode === "placeholder") {
+    lines.push(resolvePlaceholderMessage(field));
+  }
+
+  if (card.requiredByTemplate) {
+    lines.push("Required by template.");
+  }
+
+  if (field && !field.editable) {
+    lines.push("Auto only.");
+  }
+
+  return lines;
+}
+
 export function DataPanel({
   dataCards,
   resolvedFields,
@@ -38,20 +81,24 @@ export function DataPanel({
         </div>
         <div>
           <h2>Data</h2>
-          <p>Review resolved metadata, keep placeholders visible, or enter manual overrides.</p>
+          <p>Review every field card, keep state labels honest, and override only when needed.</p>
         </div>
       </header>
 
       <div className="editor-data-card-list">
         {dataCards.map((card) => {
           const primaryBinding = card.bindings[0] ?? null;
-          const boundField = primaryBinding ? resolvedFields[primaryBinding] : undefined;
+          const field = primaryBinding ? resolvedFields[primaryBinding] : undefined;
           const overrideValue = primaryBinding ? (overrides[primaryBinding] ?? "") : "";
+          const statusLines = resolveStatusLines(card, field);
 
           return (
             <article className="editor-data-card" key={card.id}>
               <div className="editor-data-card-topline">
                 <div>
+                  <div className="editor-panel-icon-wrap">
+                    <DatabaseIcon className="editor-panel-icon" />
+                  </div>
                   <h3>{card.title}</h3>
                   <p>{card.previewValue ?? "No value resolved yet."}</p>
                 </div>
@@ -61,10 +108,10 @@ export function DataPanel({
               </div>
 
               <label className="editor-switch-row">
-                <span>Show {card.title}</span>
+                <span>Display field</span>
                 <Switch.Root
                   checked={cardEnabled[card.id] ?? false}
-                  aria-label={`Show ${card.title}`}
+                  aria-label={`Display ${card.title}`}
                   className="editor-switch"
                   onCheckedChange={(checked) => {
                     onCardEnabledChange(card.id, checked);
@@ -74,21 +121,21 @@ export function DataPanel({
                 </Switch.Root>
               </label>
 
-              {card.mode === "placeholder" ? (
-                <p className="editor-placeholder-note">
-                  Placeholder visible until you add a manual value.
+              {statusLines.map((line) => (
+                <p className="editor-placeholder-note" key={line}>
+                  {line}
                 </p>
-              ) : null}
+              ))}
 
               {primaryBinding ? (
                 <label className="editor-override-field">
-                  <span>{card.title} override</span>
+                  <span>Manual value</span>
                   <Input
                     type="text"
-                    aria-label={`${card.title} override`}
+                    aria-label={`Manual value for ${card.title}`}
                     value={overrideValue}
-                    disabled={!boundField?.editable}
-                    placeholder={boundField?.editable ? "Enter custom copy" : "Auto only"}
+                    disabled={!field?.editable}
+                    placeholder={field?.editable ? "Enter manual value" : "Auto only"}
                     onChange={(event) => {
                       onOverrideChange(primaryBinding, event.target.value);
                     }}

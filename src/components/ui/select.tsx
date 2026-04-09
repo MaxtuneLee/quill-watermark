@@ -1,3 +1,11 @@
-import { Select as BaseSelect } from "@base-ui/react";
+import type { SelectHTMLAttributes } from "react";
 
-export const Select = BaseSelect;
+export type SelectProps = SelectHTMLAttributes<HTMLSelectElement>;
+
+function joinClassNames(...classNames: Array<string | undefined>) {
+  return classNames.filter(Boolean).join(" ");
+}
+
+export function Select(props: SelectProps) {
+  return <select {...props} className={joinClassNames("ui-select", props.className)} />;
+}

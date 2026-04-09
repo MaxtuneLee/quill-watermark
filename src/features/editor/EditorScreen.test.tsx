@@ -80,7 +80,7 @@ async function renderLoadedEditorScreen() {
     sourceFile: props.instance.sourceFile,
   });
 
-  render(
+  const view = render(
     <Provider store={store}>
       <EditorScreen
         {...props}
@@ -91,7 +91,7 @@ async function renderLoadedEditorScreen() {
     </Provider>,
   );
 
-  return { props, store };
+  return { props, store, ...view };
 }
 
 test("shows an image importer before a photo is loaded", () => {
@@ -137,35 +137,88 @@ test("renders the desktop workspace shell with rails, top export CTA, and librar
   expect(screen.queryByRole("combobox", { name: /template/i })).not.toBeInTheDocument();
 });
 
-test("updates canvas padding from the style panel", async () => {
-  const user = userEvent.setup();
-  const { store } = await renderLoadedEditorScreen();
+test("renders desktop style rail sections and design-aligned control groups", async () => {
+  await renderLoadedEditorScreen();
 
-  const input = screen.getByLabelText(/canvas padding/i);
-  await user.clear(input);
-  await user.type(input, "64");
+  const styleRail = screen.getByRole("region", { name: /style rail/i });
 
-  expect(store.get(editorControlsAtom).canvasPadding).toBe(64);
+  expect(within(styleRail).getByRole("heading", { name: /^canvas$/i })).toBeInTheDocument();
+  expect(within(styleRail).getByText(/aspect ratio/i)).toBeInTheDocument();
+  expect(within(styleRail).getByText(/image fill/i)).toBeInTheDocument();
+  expect(within(styleRail).getByText(/^padding$/i)).toBeInTheDocument();
+  expect(within(styleRail).getByRole("heading", { name: /^finish$/i })).toBeInTheDocument();
+  expect(within(styleRail).getByText(/frame style/i)).toBeInTheDocument();
+  expect(within(styleRail).getByText(/corner radius/i)).toBeInTheDocument();
+  expect(within(styleRail).getByRole("heading", { name: /^type$/i })).toBeInTheDocument();
+  expect(within(styleRail).getByText(/font style/i)).toBeInTheDocument();
+  expect(within(styleRail).getByRole("heading", { name: /^brand$/i })).toBeInTheDocument();
+  expect(within(styleRail).getByText(/brand position/i)).toBeInTheDocument();
 });
 
-test("toggles a data card from the data panel", async () => {
+test("persists style-rail control updates through app state after a remount", async () => {
+  const user = userEvent.setup();
+  const { store, rerender, props } = await renderLoadedEditorScreen();
+
+  const paddingInput = screen.getByLabelText(/^padding$/i);
+  await user.clear(paddingInput);
+  await user.type(paddingInput, "64");
+
+  expect(store.get(editorControlsAtom).canvasPadding).toBe(64);
+
+  rerender(
+    <Provider store={store}>
+      <EditorScreen
+        {...props}
+        dispatch={(action) => {
+          void store.set(editorDispatchAtom, action);
+        }}
+      />
+    </Provider>,
+  );
+
+  expect(screen.getByLabelText(/^padding$/i)).toHaveValue(64);
+});
+
+test("shows card state messaging for auto, placeholder, and required missing values", async () => {
+  await renderLoadedEditorScreen();
+
+  const autoCard = screen.getByRole("heading", { name: /camera model/i }).closest("article");
+  const placeholderCard = screen.getByRole("heading", { name: /^location$/i }).closest("article");
+
+  expect(autoCard).not.toBeNull();
+  expect(placeholderCard).not.toBeNull();
+
+  expect(within(autoCard!).getByText(/^auto$/i)).toBeInTheDocument();
+  expect(within(autoCard!).getByText("Q2")).toBeInTheDocument();
+  expect(within(placeholderCard!).getByText(/^placeholder$/i)).toBeInTheDocument();
+  expect(within(placeholderCard!).getByText("Location unavailable")).toBeInTheDocument();
+  expect(within(placeholderCard!).getByText(/missing from photo metadata/i)).toBeInTheDocument();
+  expect(within(placeholderCard!).getByText(/required by template/i)).toBeInTheDocument();
+});
+
+test("toggles redesigned data cards and stores the enabled state in app state", async () => {
   const user = userEvent.setup();
   const { store } = await renderLoadedEditorScreen();
 
-  await user.click(screen.getByRole("switch", { name: /show camera model/i }));
+  await user.click(screen.getByRole("switch", { name: /display camera model/i }));
 
   expect(store.get(editorCardEnabledAtom)["camera-model"]).toBe(false);
 });
 
-test("updates a manual override from the data panel", async () => {
+test("accepts manual overrides through the wrapped input and surfaces manual card state", async () => {
   const user = userEvent.setup();
   const { store } = await renderLoadedEditorScreen();
 
-  const input = screen.getByLabelText(/author override/i);
+  const card = screen.getByRole("heading", { name: /^author$/i }).closest("article");
+  expect(card).not.toBeNull();
+
+  const input = within(card!).getByLabelText(/manual value/i);
   await user.clear(input);
   await user.type(input, "By Harbor Studio");
 
   expect(store.get(fieldOverridesAtom).authorLine).toBe("By Harbor Studio");
+  expect(within(card!).getByText(/^manual$/i)).toBeInTheDocument();
+  expect(within(card!).getByText("By Harbor Studio")).toBeInTheDocument();
 });
 
 test("shows an explicit import error in pending-image state", () => {

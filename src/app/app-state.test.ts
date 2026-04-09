@@ -248,8 +248,24 @@ test("built-in shot-time field resolves from imported metadata for templates tha
   });
 });
 
-test("editor control actions persist style values in editor state", async () => {
+test("style control actions persist rail values in app state across later session updates", async () => {
   const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  const extractMetadataMock = vi.mocked(metadataService.extractMetadata);
+  extractMetadataMock.mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: {
+      latitude: null,
+      longitude: null,
+    },
+    shotTime: null,
+  } satisfies NormalizedMetadata);
 
   await store.set(editorDispatchAtom, {
     type: "select-template",
@@ -262,6 +278,24 @@ test("editor control actions persist style values in editor state", async () => 
   await store.set(editorDispatchAtom, {
     type: "editor/set-control",
     payload: { id: "imageFit", value: "contain" },
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+  await store.set(editorDispatchAtom, {
+    type: "replace-metadata",
+    metadata: {
+      camera: { make: "Canon", model: "R5" },
+      exposure: {
+        iso: 100,
+        aperture: 4,
+        shutterSeconds: 1 / 250,
+        focalLengthMm: 35,
+      },
+      location: {
+        latitude: 22.302711,
+        longitude: 114.177216,
+      },
+      shotTime: "2026-04-09T02:15:00.000Z",
+    },
   });
 
   expect(store.get(editorControlsAtom)).toMatchObject({
@@ -291,6 +325,101 @@ test("card enabled actions update card state and preview field visibility", asyn
     enabled: false,
   });
   expect(store.get(editorPreviewResolvedFieldsAtom).cameraModel.value).toBe(null);
+});
+
+test("required placeholder cards stay enabled and expose missing-value state through app state", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  const extractMetadataMock = vi.mocked(metadataService.extractMetadata);
+  extractMetadataMock.mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: {
+      latitude: null,
+      longitude: null,
+    },
+    shotTime: null,
+  } satisfies NormalizedMetadata);
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  expect(store.get(dataCardsAtom).find((card) => card.id === "location")).toMatchObject({
+    enabled: true,
+    mode: "placeholder",
+    previewValue: "Location unavailable",
+    requiredByTemplate: true,
+  });
+});
+
+test("manual overrides and card visibility remain app-owned across later metadata updates", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  const extractMetadataMock = vi.mocked(metadataService.extractMetadata);
+  extractMetadataMock.mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: {
+      latitude: null,
+      longitude: null,
+    },
+    shotTime: null,
+  } satisfies NormalizedMetadata);
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+  await store.set(editorDispatchAtom, {
+    type: "set-field-override",
+    fieldId: "authorLine",
+    value: "By Harbor Studio",
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-card-enabled",
+    payload: { id: "author", enabled: false },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "replace-metadata",
+    metadata: {
+      camera: { make: "Canon", model: "R5" },
+      exposure: {
+        iso: 100,
+        aperture: 4,
+        shutterSeconds: 1 / 250,
+        focalLengthMm: 35,
+      },
+      location: {
+        latitude: 22.302711,
+        longitude: 114.177216,
+      },
+      shotTime: "2026-04-09T02:15:00.000Z",
+    },
+  });
+
+  expect(store.get(resolvedFieldsAtom).authorLine).toMatchObject({
+    mode: "manual",
+    value: "By Harbor Studio",
+  });
+  expect(store.get(dataCardsAtom).find((card) => card.id === "author")).toMatchObject({
+    enabled: false,
+    mode: "manual",
+    previewValue: "By Harbor Studio",
+  });
 });
 
 test("export option actions persist export settings in editor state", async () => {

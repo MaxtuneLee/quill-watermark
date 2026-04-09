@@ -25,6 +25,9 @@ export interface ExportPanelValues {
   multiplier: ExportMultiplier;
 }
 
+export type StyleControlId = keyof StylePanelValues;
+export type StyleControlValue = StylePanelValues[StyleControlId];
+
 function findPhotoNode(layout: TemplateLayoutNode): TemplateLayoutNode | null {
   if (layout.type === "image" && layout.binding === "photo") {
     return layout;
@@ -93,17 +96,9 @@ export const brandPositionOptions: ReadonlyArray<{
   label: string;
   value: BrandPosition;
 }> = [
-  { label: "Bottom Left", value: "bottom-left" },
-  { label: "Bottom Right", value: "bottom-right" },
-  { label: "Centered", value: "center" },
-];
-
-export const metadataOrderOptions: ReadonlyArray<{
-  label: string;
-  value: MetadataOrder;
-}> = [
-  { label: "Capture First", value: "capture-first" },
-  { label: "Brand First", value: "brand-first" },
+  { label: "Left", value: "bottom-left" },
+  { label: "Right", value: "bottom-right" },
+  { label: "Center", value: "center" },
 ];
 
 export const surfaceStyleOptions: ReadonlyArray<{
@@ -114,6 +109,14 @@ export const surfaceStyleOptions: ReadonlyArray<{
   { label: "Border", value: "border" },
   { label: "Shadow", value: "shadow" },
   { label: "Border + Shadow", value: "border-shadow" },
+];
+
+export const imageFillOptions: ReadonlyArray<{
+  label: string;
+  value: StylePanelValues["imageFit"];
+}> = [
+  { label: "Fill", value: "cover" },
+  { label: "Fit", value: "contain" },
 ];
 
 export const exportFormatOptions: ReadonlyArray<{
