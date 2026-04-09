@@ -22,24 +22,113 @@ export type TemplateControlType = "text" | "toggle" | "slider" | "select";
 export type TemplateFieldKind = "text" | "image";
 export type TemplateFieldSource = "exif" | "gps" | "user" | "derived" | "afilmory" | "brand";
 export type ResolvedFieldMode = "auto" | "placeholder" | "manual";
+export type LayoutDirection = "row" | "column";
+export type LayoutAlign = "start" | "center" | "end" | "stretch";
+export type TextAlign = "left" | "center" | "right";
+export type LayoutScalar = number | "fill";
+export type ImageFit = "cover" | "contain";
 
-export interface TemplateLayout {
-  zone: TemplateLayoutZone;
-  textAlign: "left" | "center" | "right";
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface IntrinsicSize {
+  width: number;
+  height: number;
+}
+
+export type CanvasPadding = number | Point;
+
+export interface AspectRatioDefinition {
+  width: number;
+  height: number;
+}
+
+export interface TemplateCanvasDefinition {
+  background: string;
+  padding: CanvasPadding;
+  aspectRatio: AspectRatioDefinition | null;
+}
+
+export interface TemplatePresetOverride {
+  targetId: string;
+  changes: Record<string, unknown>;
 }
 
 export interface TemplatePreset {
-  opacity: number;
-  textScale: number;
-  padding: number;
-  backgroundStrength: number;
-  align: "start" | "center" | "end";
+  id: "original" | TemplateAspect;
+  label: string;
+  canvas: Partial<TemplateCanvasDefinition> & {
+    aspectRatio: AspectRatioDefinition | null;
+  };
+  overrides: readonly TemplatePresetOverride[];
 }
 
-export interface TemplateControlOption {
+export interface ResolvedTemplatePreset {
+  id: "original" | TemplateAspect;
   label: string;
-  value: string;
+  canvas: TemplateCanvasDefinition;
+  overrides: readonly TemplatePresetOverride[];
 }
+
+interface LayoutNodeBase {
+  id: string;
+}
+
+export interface StackLayoutNode extends LayoutNodeBase {
+  type: "stack";
+  direction: LayoutDirection;
+  children: readonly TemplateLayoutNode[];
+  gap?: number;
+  align?: LayoutAlign;
+  padding?: CanvasPadding;
+}
+
+export interface OverlayLayoutNode extends LayoutNodeBase {
+  type: "overlay";
+  children: readonly TemplateLayoutNode[];
+  align?: LayoutAlign;
+  justify?: LayoutAlign;
+  padding?: CanvasPadding;
+}
+
+export interface TextLayoutNode extends LayoutNodeBase {
+  type: "text";
+  binding: string;
+  font: string;
+  lineHeight: number;
+  align?: TextAlign;
+  width?: LayoutScalar;
+  maxLines?: number;
+  flexGrow?: number;
+}
+
+export interface ImageLayoutNode extends LayoutNodeBase {
+  type: "image";
+  binding: string;
+  intrinsicSize: IntrinsicSize;
+  fit?: ImageFit;
+  width?: LayoutScalar;
+  height?: LayoutScalar;
+  flexGrow?: number;
+  align?: LayoutAlign;
+}
+
+export type TemplateLayoutNode =
+  | StackLayoutNode
+  | OverlayLayoutNode
+  | TextLayoutNode
+  | ImageLayoutNode;
+
+export type TemplateLayout = TemplateLayoutNode;
 
 export type TemplateFormatRule =
   | {
@@ -155,11 +244,76 @@ export interface TemplateSelectControl extends TemplateControlBase<"select"> {
   options: readonly TemplateControlOption[];
 }
 
+export interface TemplateControlOption {
+  label: string;
+  value: string;
+}
+
 export type TemplateControl =
   | TemplateTextControl
   | TemplateToggleControl
   | TemplateSliderControl
   | TemplateSelectControl;
+
+export interface ResolveLayoutCanvas {
+  width: number;
+  height: number;
+  padding: CanvasPadding;
+  background?: string;
+}
+
+export interface ResolveLayoutInput {
+  canvas: ResolveLayoutCanvas;
+  layout: TemplateLayoutNode;
+  resolvedFields: Record<
+    string,
+    {
+      value: string | null;
+      mode: ResolvedFieldMode;
+    }
+  >;
+}
+
+export interface MeasuredTextBlock {
+  lines: string[];
+  width: number;
+  height: number;
+  didTruncate: boolean;
+}
+
+interface ResolvedLayoutLeafBase {
+  id: string;
+  type: "image" | "text";
+  binding: string;
+  frame: Rect;
+  contentBox: Rect;
+  font?: string;
+  lineHeight?: number;
+  text: MeasuredTextBlock;
+}
+
+export interface ResolvedImageLayoutNode extends ResolvedLayoutLeafBase {
+  type: "image";
+  fit: ImageFit;
+  contentBox: Rect;
+}
+
+export interface ResolvedTextLayoutNode extends ResolvedLayoutLeafBase {
+  type: "text";
+  font: string;
+  lineHeight: number;
+  text: MeasuredTextBlock;
+}
+
+export interface ResolvedLayoutNode extends ResolvedLayoutLeafBase {
+  fit?: ImageFit;
+}
+
+export interface ResolvedLayoutResult {
+  safeBounds: Rect;
+  nodes: Record<string, ResolvedLayoutNode>;
+  drawOrder: readonly string[];
+}
 
 export interface WatermarkTemplate {
   id: string;
@@ -169,8 +323,9 @@ export interface WatermarkTemplate {
   coverImage: string;
   aspectSupport: readonly TemplateAspect[];
   tags: readonly string[];
-  layout: TemplateLayout;
-  presets: TemplatePreset;
+  canvas: TemplateCanvasDefinition;
+  layout: TemplateLayoutNode;
+  presets: readonly TemplatePreset[];
   schema: TemplateFieldSchema;
   fieldGroups: readonly TemplateFieldGroup[];
   controls: readonly TemplateControl[];

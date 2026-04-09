@@ -1,5 +1,11 @@
 import type { WatermarkTemplate } from "../types";
-import { defaultTemplateSchema, pickTemplateFieldGroups } from "./shared";
+import {
+  createTemplateCanvas,
+  createTemplateLayout,
+  createTemplatePresets,
+  defaultTemplateSchema,
+  pickTemplateFieldGroups,
+} from "./shared";
 
 export const quietWhiteMarginTemplate: WatermarkTemplate = {
   id: "quiet-white-margin",
@@ -9,17 +15,9 @@ export const quietWhiteMarginTemplate: WatermarkTemplate = {
   coverImage: "/templates/minimal.jpeg",
   aspectSupport: ["1:1", "4:5", "3:2"],
   tags: ["minimal", "margin"],
-  layout: {
-    zone: "margin-bottom",
-    textAlign: "left",
-  },
-  presets: {
-    opacity: 0.55,
-    textScale: 0.9,
-    padding: 26,
-    backgroundStrength: 0.12,
-    align: "start",
-  },
+  canvas: createTemplateCanvas(26, "#faf7f2"),
+  layout: createTemplateLayout("margin-bottom", "left"),
+  presets: createTemplatePresets(["1:1", "4:5", "3:2"]),
   schema: defaultTemplateSchema,
   fieldGroups: pickTemplateFieldGroups(["shot-time", "location", "author", "brand-mark"]),
   controls: [

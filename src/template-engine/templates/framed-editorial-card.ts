@@ -1,5 +1,11 @@
 import type { WatermarkTemplate } from "../types";
-import { defaultTemplateSchema, pickTemplateFieldGroups } from "./shared";
+import {
+  createTemplateCanvas,
+  createTemplateLayout,
+  createTemplatePresets,
+  defaultTemplateSchema,
+  pickTemplateFieldGroups,
+} from "./shared";
 
 export const framedEditorialCardTemplate: WatermarkTemplate = {
   id: "framed-editorial-card",
@@ -9,17 +15,9 @@ export const framedEditorialCardTemplate: WatermarkTemplate = {
   coverImage: "/templates/normal.jpg",
   aspectSupport: ["1:1", "4:5", "3:2", "16:9"],
   tags: ["editorial", "frame"],
-  layout: {
-    zone: "editorial-card",
-    textAlign: "left",
-  },
-  presets: {
-    opacity: 0.8,
-    textScale: 0.96,
-    padding: 22,
-    backgroundStrength: 0.48,
-    align: "start",
-  },
+  canvas: createTemplateCanvas(22),
+  layout: createTemplateLayout("editorial-card", "left"),
+  presets: createTemplatePresets(["1:1", "4:5", "3:2", "16:9"]),
   schema: defaultTemplateSchema,
   fieldGroups: pickTemplateFieldGroups([
     "camera-model",

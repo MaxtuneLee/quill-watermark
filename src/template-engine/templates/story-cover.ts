@@ -1,5 +1,11 @@
 import type { WatermarkTemplate } from "../types";
-import { defaultTemplateSchema, pickTemplateFieldGroups } from "./shared";
+import {
+  createTemplateCanvas,
+  createTemplateLayout,
+  createTemplatePresets,
+  defaultTemplateSchema,
+  pickTemplateFieldGroups,
+} from "./shared";
 
 export const storyCoverTemplate: WatermarkTemplate = {
   id: "story-cover",
@@ -9,17 +15,9 @@ export const storyCoverTemplate: WatermarkTemplate = {
   coverImage: "/templates/blur.jpg",
   aspectSupport: ["9:16", "4:5"],
   tags: ["social", "portrait"],
-  layout: {
-    zone: "story-cover",
-    textAlign: "center",
-  },
-  presets: {
-    opacity: 0.82,
-    textScale: 1.16,
-    padding: 28,
-    backgroundStrength: 0.58,
-    align: "center",
-  },
+  canvas: createTemplateCanvas(28),
+  layout: createTemplateLayout("story-cover", "center"),
+  presets: createTemplatePresets(["9:16", "4:5"]),
   schema: defaultTemplateSchema,
   fieldGroups: pickTemplateFieldGroups(["location", "author", "brand-mark"]),
   controls: [

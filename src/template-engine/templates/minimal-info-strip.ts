@@ -1,5 +1,11 @@
 import type { WatermarkTemplate } from "../types";
-import { defaultTemplateSchema, pickTemplateFieldGroups } from "./shared";
+import {
+  createTemplateCanvas,
+  createTemplateLayout,
+  createTemplatePresets,
+  defaultTemplateSchema,
+  pickTemplateFieldGroups,
+} from "./shared";
 
 export const minimalInfoStripTemplate: WatermarkTemplate = {
   id: "minimal-info-strip",
@@ -9,17 +15,9 @@ export const minimalInfoStripTemplate: WatermarkTemplate = {
   coverImage: "/templates/minimal.jpeg",
   aspectSupport: ["1:1", "4:5", "3:2"],
   tags: ["minimal", "light"],
-  layout: {
-    zone: "top-strip",
-    textAlign: "right",
-  },
-  presets: {
-    opacity: 0.62,
-    textScale: 0.92,
-    padding: 18,
-    backgroundStrength: 0.24,
-    align: "end",
-  },
+  canvas: createTemplateCanvas(18),
+  layout: createTemplateLayout("top-strip", "right"),
+  presets: createTemplatePresets(["1:1", "4:5", "3:2"]),
   schema: defaultTemplateSchema,
   fieldGroups: pickTemplateFieldGroups([
     "camera-model",

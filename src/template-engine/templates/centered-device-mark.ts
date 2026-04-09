@@ -1,5 +1,11 @@
 import type { WatermarkTemplate } from "../types";
-import { defaultTemplateSchema, pickTemplateFieldGroups } from "./shared";
+import {
+  createTemplateCanvas,
+  createTemplateLayout,
+  createTemplatePresets,
+  defaultTemplateSchema,
+  pickTemplateFieldGroups,
+} from "./shared";
 
 export const centeredDeviceMarkTemplate: WatermarkTemplate = {
   id: "centered-device-mark",
@@ -9,17 +15,9 @@ export const centeredDeviceMarkTemplate: WatermarkTemplate = {
   coverImage: "/templates/centerlogo.jpg",
   aspectSupport: ["1:1", "4:5", "16:9"],
   tags: ["logo-first", "centered"],
-  layout: {
-    zone: "center-mark",
-    textAlign: "center",
-  },
-  presets: {
-    opacity: 0.73,
-    textScale: 1.08,
-    padding: 20,
-    backgroundStrength: 0.42,
-    align: "center",
-  },
+  canvas: createTemplateCanvas(20),
+  layout: createTemplateLayout("center-mark", "center"),
+  presets: createTemplatePresets(["1:1", "4:5", "16:9"]),
   schema: defaultTemplateSchema,
   fieldGroups: pickTemplateFieldGroups(["camera-model", "shooting-parameters", "author"]),
   controls: [
