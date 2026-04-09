@@ -326,7 +326,7 @@ test("editor ignores control ids that are outside the visible style contract", a
   expect(store.get(editorControlsAtom)).toEqual(before);
 });
 
-test("card enabled actions keep required cards visible in preview state", async () => {
+test("card enabled actions update optional card state and preview field visibility", async () => {
   const store = createStore();
 
   await store.set(editorDispatchAtom, {
@@ -335,19 +335,19 @@ test("card enabled actions keep required cards visible in preview state", async 
   });
   await store.set(editorDispatchAtom, {
     type: "set-field-override",
-    fieldId: "cameraModel",
-    value: "Contax T3",
+    fieldId: "brandLine",
+    value: "Harbor Studio",
   });
   await store.set(editorDispatchAtom, {
     type: "editor/set-card-enabled",
-    payload: { id: "camera-model", enabled: false },
+    payload: { id: "brand-mark", enabled: false },
   });
 
-  expect(store.get(dataCardsAtom).find((card) => card.id === "camera-model")).toMatchObject({
-    enabled: true,
-    requiredByTemplate: true,
+  expect(store.get(dataCardsAtom).find((card) => card.id === "brand-mark")).toMatchObject({
+    enabled: false,
+    requiredByTemplate: false,
   });
-  expect(store.get(editorPreviewResolvedFieldsAtom).cameraModel.value).toBe("Contax T3");
+  expect(store.get(editorPreviewResolvedFieldsAtom).brandLine.value).toBe(null);
 });
 
 test("required placeholder cards stay enabled and expose missing-value state through app state", async () => {
@@ -413,7 +413,7 @@ test("required cards cannot be disabled through the reducer and stay visible in 
   expect(store.get(editorPreviewResolvedFieldsAtom).cameraModel.value).toBe("Contax T3");
 });
 
-test("manual overrides and card visibility remain app-owned across later metadata updates", async () => {
+test("manual overrides and optional card visibility remain app-owned across later metadata updates", async () => {
   const store = createStore();
   const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
   const extractMetadataMock = vi.mocked(metadataService.extractMetadata);
@@ -444,7 +444,7 @@ test("manual overrides and card visibility remain app-owned across later metadat
   });
   await store.set(editorDispatchAtom, {
     type: "editor/set-card-enabled",
-    payload: { id: "author", enabled: false },
+    payload: { id: "brand-mark", enabled: false },
   });
   await store.set(editorDispatchAtom, {
     type: "replace-metadata",
@@ -468,12 +468,12 @@ test("manual overrides and card visibility remain app-owned across later metadat
     mode: "manual",
     value: "By Harbor Studio",
   });
-  expect(store.get(dataCardsAtom).find((card) => card.id === "author")).toMatchObject({
-    enabled: true,
-    requiredByTemplate: true,
-    mode: "manual",
-    previewValue: "By Harbor Studio",
+  expect(store.get(dataCardsAtom).find((card) => card.id === "brand-mark")).toMatchObject({
+    enabled: false,
+    requiredByTemplate: false,
+    mode: "auto",
   });
+  expect(store.get(editorPreviewResolvedFieldsAtom).brandLine.value).toBe(null);
 });
 
 test("export option actions persist export settings in editor state", async () => {

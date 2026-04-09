@@ -96,7 +96,7 @@ const fieldGroupsById: Record<string, TemplateFieldGroup> = {
     id: "brand-mark",
     title: "Brand Mark",
     bindings: ["brandLine"],
-    requiredByTemplate: true,
+    requiredByTemplate: false,
   },
 };
 

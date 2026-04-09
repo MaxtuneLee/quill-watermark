@@ -184,9 +184,11 @@ test("shows card state messaging for auto, placeholder, and required missing val
 
   const autoCard = screen.getByRole("heading", { name: /camera model/i }).closest("article");
   const placeholderCard = screen.getByRole("heading", { name: /^location$/i }).closest("article");
+  const optionalCard = screen.getByRole("heading", { name: /brand mark/i }).closest("article");
 
   expect(autoCard).not.toBeNull();
   expect(placeholderCard).not.toBeNull();
+  expect(optionalCard).not.toBeNull();
 
   expect(within(autoCard!).getByText(/^auto$/i)).toBeInTheDocument();
   expect(within(autoCard!).getByText("Q2")).toBeInTheDocument();
@@ -198,10 +200,24 @@ test("shows card state messaging for auto, placeholder, and required missing val
     within(autoCard!).queryByRole("switch", { name: /display camera model/i }),
   ).not.toBeInTheDocument();
   expect(within(autoCard!).getByText(/always shown in this template/i)).toBeInTheDocument();
+  expect(
+    within(optionalCard!).getByRole("switch", { name: /display brand mark/i }),
+  ).toBeInTheDocument();
+  expect(within(optionalCard!).queryByText(/required by template/i)).not.toBeInTheDocument();
+});
+
+test("toggles an optional redesigned data card and stores the enabled state in app state", async () => {
+  const user = userEvent.setup();
+  const { store } = await renderLoadedEditorScreen();
+  const brandCard = screen.getByRole("heading", { name: /brand mark/i }).closest("article");
+
+  expect(brandCard).not.toBeNull();
+  await user.click(within(brandCard!).getByRole("switch", { name: /display brand mark/i }));
+
+  expect(store.get(editorCardEnabledAtom)["brand-mark"]).toBe(false);
 });
 
 test("required data cards are non-collapsible in the redesigned card ui", async () => {
-  const user = userEvent.setup();
   const { store } = await renderLoadedEditorScreen();
   const cameraCard = screen.getByRole("heading", { name: /camera model/i }).closest("article");
 
@@ -209,10 +225,6 @@ test("required data cards are non-collapsible in the redesigned card ui", async 
   expect(
     within(cameraCard!).queryByRole("switch", { name: /display camera model/i }),
   ).not.toBeInTheDocument();
-  expect(store.get(editorCardEnabledAtom)["camera-model"]).toBe(true);
-
-  await user.click(within(cameraCard!).getByLabelText(/manual value for camera model/i));
-
   expect(store.get(editorCardEnabledAtom)["camera-model"]).toBe(true);
 });
 
