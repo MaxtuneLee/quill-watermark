@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 import {
   editorDataCardsAtom,
   editorControlsAtom,
@@ -9,16 +9,23 @@ import {
   type EditorAction,
   type EditorInstance,
 } from "../../app/app-state";
+import { Button } from "../../components/ui";
+import { ArrowLeftIcon, DownloadIcon, SparklesIcon } from "../../icons/ui-icons";
 import { exportImage } from "../../services/export/export-image";
 import { shareImage } from "../../services/export/share-image";
 import type { WatermarkTemplate } from "../../template-engine/types";
 import type { ResolvedFieldMap, TemplateDataCard } from "../../template-engine/types";
 import { ImageImporter } from "./ImageImporter";
-import { PreviewStage } from "./PreviewStage";
+import { PreviewStage, type PreviewRenderState, type PreviewStageHandle } from "./PreviewStage";
 import "./editor.css";
 import { DataPanel } from "./panels/DataPanel";
 import { ExportPanel } from "./panels/ExportPanel";
-import type { ExportFormat, ExportMultiplier, StylePanelValues } from "./panels/panel-state";
+import type {
+  ExportFormat,
+  ExportMultiplier,
+  ExportPanelValues,
+  StylePanelValues,
+} from "./panels/panel-state";
 import { StylePanel } from "./panels/StylePanel";
 
 interface EditorScreenProps {
@@ -32,18 +39,238 @@ interface EditorScreenProps {
 
 function TemplateSummary({ template }: { template: WatermarkTemplate }) {
   return (
-    <section aria-label="Template summary">
-      <h2>Template Summary</h2>
+    <section aria-label="Template summary" className="editor-template-summary">
+      <p className="editor-shell-kicker">Template locked</p>
+      <h2>{template.name}</h2>
       <p>{template.description}</p>
       <dl>
-        <dt>Name</dt>
-        <dd>{template.name}</dd>
         <dt>Family</dt>
         <dd>{template.family}</dd>
-        <dt>Aspect Ratios</dt>
-        <dd>{template.aspectSupport.join(", ")}</dd>
+        <dt>Aspect ratios</dt>
+        <dd>Original, {template.aspectSupport.join(", ")}</dd>
       </dl>
     </section>
+  );
+}
+
+function previewStatusLabel(renderState: PreviewRenderState) {
+  switch (renderState) {
+    case "ready":
+      return "Preview ready";
+    case "loading":
+      return "Rendering preview";
+    case "error":
+      return "Render issue";
+    default:
+      return "Awaiting photo";
+  }
+}
+
+function TemplateStatus({ template }: { template: WatermarkTemplate }) {
+  return (
+    <div className="editor-template-status">
+      <p className="editor-shell-kicker">Template locked</p>
+      <p className="editor-template-status-name">{template.name}</p>
+      <p className="editor-template-status-meta">
+        {template.family} · Original, {template.aspectSupport.join(", ")}
+      </p>
+    </div>
+  );
+}
+
+function EditorHeader({
+  exportFormat,
+  hasLoadedImage,
+  onBackToLibrary,
+  onExport,
+  onReplacePhoto,
+  previewRenderState,
+  template,
+}: {
+  exportFormat: ExportFormat;
+  hasLoadedImage: boolean;
+  onBackToLibrary: () => void;
+  onExport: () => void;
+  onReplacePhoto: () => void;
+  previewRenderState: PreviewRenderState;
+  template: WatermarkTemplate;
+}) {
+  return (
+    <header className="editor-shell-header">
+      <div className="editor-shell-brand">
+        <span className="editor-shell-brand-mark" aria-hidden="true">
+          <SparklesIcon className="editor-shell-brand-icon" />
+        </span>
+        <div>
+          <p className="editor-shell-kicker">Quill Studio</p>
+          <h1>Desktop workspace</h1>
+        </div>
+      </div>
+
+      <div className="editor-shell-status-group">
+        <TemplateStatus template={template} />
+        <div className="editor-shell-status-pill" data-state={previewRenderState}>
+          {previewStatusLabel(previewRenderState)}
+        </div>
+      </div>
+
+      <div className="editor-shell-actions">
+        <Button size="compact" variant="workspace-ghost" onClick={onBackToLibrary}>
+          <ArrowLeftIcon className="editor-action-icon" />
+          Back to library
+        </Button>
+        <Button
+          disabled={!hasLoadedImage}
+          size="compact"
+          variant="workspace-secondary"
+          onClick={onReplacePhoto}
+        >
+          Replace photo
+        </Button>
+        <Button
+          disabled={!hasLoadedImage || previewRenderState !== "ready"}
+          size="compact"
+          variant="workspace-primary"
+          onClick={onExport}
+        >
+          <DownloadIcon className="editor-action-icon" />
+          Export {exportFormat.toUpperCase()}
+        </Button>
+      </div>
+    </header>
+  );
+}
+
+function PendingWorkspace({
+  dispatch,
+  importError,
+  template,
+}: {
+  dispatch: (action: EditorAction) => Promise<void> | void;
+  importError: string | null;
+  template: WatermarkTemplate;
+}) {
+  return (
+    <div className="editor-empty-shell">
+      <section aria-label="Preview workspace" className="editor-empty-stage" role="region">
+        <div className="editor-stage-shell">
+          <div className="editor-stage-shell-chrome">
+            <p>Preview workspace</p>
+            <span>Load a photo to enter the production stage</span>
+          </div>
+          <div className="editor-empty-stage-content">
+            <ImageImporter dispatch={dispatch} importError={importError} />
+          </div>
+        </div>
+      </section>
+      <TemplateSummary template={template} />
+    </div>
+  );
+}
+
+function LoadedWorkspace({
+  activeDataCards,
+  activeResolvedFields,
+  controlValues,
+  exportStatusMessage,
+  exportValues,
+  fieldOverrides,
+  handleCardEnabledChange,
+  handleControlChange,
+  handleExport,
+  handleExportOptionChange,
+  handleOverrideChange,
+  handleShare,
+  previewRenderState,
+  previewStageRef,
+  setPreviewRenderState,
+  template,
+}: {
+  activeDataCards: TemplateDataCard[];
+  activeResolvedFields: ResolvedFieldMap;
+  controlValues: StylePanelValues;
+  exportStatusMessage: string | null;
+  exportValues: ExportPanelValues;
+  fieldOverrides: Record<string, string>;
+  handleCardEnabledChange: (cardId: string, enabled: boolean) => void;
+  handleControlChange: (
+    id: keyof StylePanelValues,
+    value: StylePanelValues[keyof StylePanelValues],
+  ) => void;
+  handleExport: () => Promise<void>;
+  handleExportOptionChange: (
+    id: "format" | "multiplier",
+    value: ExportFormat | ExportMultiplier,
+  ) => void;
+  handleOverrideChange: (fieldId: string, value: string) => void;
+  handleShare: () => Promise<void>;
+  previewRenderState: PreviewRenderState;
+  previewStageRef: RefObject<PreviewStageHandle | null>;
+  setPreviewRenderState: (state: PreviewRenderState) => void;
+  template: WatermarkTemplate;
+}) {
+  return (
+    <div className="editor-workspace">
+      <section
+        aria-label="Style rail"
+        className="editor-workspace-rail editor-workspace-rail-left"
+        role="region"
+      >
+        <div className="editor-rail-heading">
+          <p className="editor-shell-kicker">Style</p>
+          <p>Controls grouped for ratio, framing, and brand treatment.</p>
+        </div>
+        <StylePanel
+          template={template}
+          values={controlValues}
+          onControlChange={handleControlChange}
+        />
+      </section>
+
+      <section aria-label="Preview workspace" className="editor-workspace-stage" role="region">
+        <div className="editor-stage-shell">
+          <div className="editor-stage-shell-chrome">
+            <p>Preview workspace</p>
+            <span>{previewStatusLabel(previewRenderState)}</span>
+          </div>
+          <div className="editor-stage-shell-body">
+            <PreviewStage ref={previewStageRef} onRenderStateChange={setPreviewRenderState} />
+          </div>
+        </div>
+      </section>
+
+      <section
+        aria-label="Export and data rail"
+        className="editor-workspace-rail editor-workspace-rail-right"
+        role="region"
+      >
+        <div className="editor-rail-heading">
+          <p className="editor-shell-kicker">Output</p>
+          <p>Export settings first, then inspect the active metadata cards below.</p>
+        </div>
+        <ExportPanel
+          disabled={previewRenderState !== "ready"}
+          values={exportValues}
+          statusMessage={exportStatusMessage}
+          onFormatChange={(value) => {
+            handleExportOptionChange("format", value);
+          }}
+          onMultiplierChange={(value) => {
+            handleExportOptionChange("multiplier", value);
+          }}
+          onExport={handleExport}
+          onShare={handleShare}
+        />
+        <DataPanel
+          dataCards={activeDataCards}
+          resolvedFields={activeResolvedFields}
+          cardEnabled={Object.fromEntries(activeDataCards.map((card) => [card.id, card.enabled]))}
+          overrides={fieldOverrides}
+          onCardEnabledChange={handleCardEnabledChange}
+          onOverrideChange={handleOverrideChange}
+        />
+      </section>
+    </div>
   );
 }
 
@@ -95,23 +322,6 @@ function downloadExport(blob: Blob, fileName: string) {
   URL.revokeObjectURL(objectUrl);
 }
 
-function TemplateStatus({ template }: { template: WatermarkTemplate }) {
-  return (
-    <section aria-label="Current template" className="editor-template-status">
-      <h2>Current Template</h2>
-      <p>{template.description}</p>
-      <dl>
-        <dt>Name</dt>
-        <dd>{template.name}</dd>
-        <dt>Family</dt>
-        <dd>{template.family}</dd>
-        <dt>Ratios</dt>
-        <dd>Original, {template.aspectSupport.join(", ")}</dd>
-      </dl>
-    </section>
-  );
-}
-
 export function EditorScreen({
   template,
   instance,
@@ -127,6 +337,8 @@ export function EditorScreen({
   const atomResolvedFields = useAtomValue(editorResolvedFieldsAtom);
   const activeDataCards = dataCards ?? atomDataCards;
   const activeResolvedFields = resolvedFields ?? atomResolvedFields;
+  const previewStageRef = useRef<PreviewStageHandle | null>(null);
+  const [previewRenderState, setPreviewRenderState] = useState<PreviewRenderState>("idle");
 
   const handleControlChange = (
     id: keyof StylePanelValues,
@@ -164,10 +376,8 @@ export function EditorScreen({
   };
 
   const buildExportedImage = async () => {
-    const previewCanvas = document.querySelector<HTMLCanvasElement>(
-      '[aria-label="Template preview"]',
-    );
-    if (previewCanvas === null) {
+    const previewCanvas = previewStageRef.current?.getCanvas() ?? null;
+    if (previewRenderState !== "ready" || previewCanvas === null) {
       throw new Error("Preview canvas is not ready yet.");
     }
 
@@ -208,54 +418,52 @@ export function EditorScreen({
     }
   };
 
+  const handleBackToLibrary = () => {
+    void dispatch({
+      type: "return-to-library",
+    });
+  };
+
+  const handleReplacePhoto = () => {
+    void dispatch({
+      type: "clear-image",
+    });
+  };
+
   return (
     <section aria-label="Editor" className="editor-screen">
-      <header className="editor-screen-header">
-        <h1>{template.name}</h1>
-        <TemplateStatus template={template} />
-      </header>
+      <EditorHeader
+        exportFormat={exportValues.format}
+        hasLoadedImage={instance !== null}
+        onBackToLibrary={handleBackToLibrary}
+        onExport={() => {
+          void handleExport();
+        }}
+        onReplacePhoto={handleReplacePhoto}
+        previewRenderState={previewRenderState}
+        template={template}
+      />
       {instance === null ? (
-        <>
-          <ImageImporter dispatch={dispatch} importError={importError} />
-          <TemplateSummary template={template} />
-        </>
+        <PendingWorkspace dispatch={dispatch} importError={importError} template={template} />
       ) : (
-        <div className="editor-workspace">
-          <div className="editor-side-column">
-            <StylePanel
-              template={template}
-              values={controlValues}
-              onControlChange={handleControlChange}
-            />
-          </div>
-          <div className="editor-stage-column">
-            <PreviewStage />
-          </div>
-          <div className="editor-side-column">
-            <ExportPanel
-              values={exportValues}
-              statusMessage={exportStatusMessage}
-              onFormatChange={(value) => {
-                handleExportOptionChange("format", value);
-              }}
-              onMultiplierChange={(value) => {
-                handleExportOptionChange("multiplier", value);
-              }}
-              onExport={handleExport}
-              onShare={handleShare}
-            />
-            <DataPanel
-              dataCards={activeDataCards}
-              resolvedFields={activeResolvedFields}
-              cardEnabled={Object.fromEntries(
-                activeDataCards.map((card) => [card.id, card.enabled]),
-              )}
-              overrides={fieldOverrides}
-              onCardEnabledChange={handleCardEnabledChange}
-              onOverrideChange={handleOverrideChange}
-            />
-          </div>
-        </div>
+        <LoadedWorkspace
+          activeDataCards={activeDataCards}
+          activeResolvedFields={activeResolvedFields}
+          controlValues={controlValues}
+          exportStatusMessage={exportStatusMessage}
+          exportValues={exportValues}
+          fieldOverrides={fieldOverrides}
+          handleCardEnabledChange={handleCardEnabledChange}
+          handleControlChange={handleControlChange}
+          handleExport={handleExport}
+          handleExportOptionChange={handleExportOptionChange}
+          handleOverrideChange={handleOverrideChange}
+          handleShare={handleShare}
+          previewRenderState={previewRenderState}
+          previewStageRef={previewStageRef}
+          setPreviewRenderState={setPreviewRenderState}
+          template={template}
+        />
       )}
     </section>
   );

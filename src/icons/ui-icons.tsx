@@ -16,6 +16,41 @@ export function ChevronDownIcon(props: UiIconProps) {
   );
 }
 
+export function ArrowLeftIcon(props: UiIconProps) {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" {...props}>
+      <path
+        d="M19 12H5m6-6-6 6 6 6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+export function SparklesIcon(props: UiIconProps) {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" {...props}>
+      <path
+        d="M12 3.5l1.7 4.8L18.5 10l-4.8 1.7L12 16.5l-1.7-4.8L5.5 10l4.8-1.7L12 3.5Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+      <path
+        d="M18.5 3.5l.7 2 .8.3-2 .7-.7 2-.7-2-2-.7 2-.7.7-2ZM18 15.5l1 2.8 2.8 1-2.8 1-1 2.7-1-2.7-2.7-1 2.7-1 1-2.8Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
 export function SlidersHorizontalIcon(props: UiIconProps) {
   return (
     <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" {...props}>

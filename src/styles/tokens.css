@@ -1,6 +1,6 @@
 :root {
   --font-sans: "Avenir Next", "Segoe UI", sans-serif;
-  --color-bg: #fffdf8;
+  --color-bg: #f7f1df;
   --color-text: #171717;
   --color-border: #d4d1c7;
   --color-surface: #f2efe3;
@@ -8,4 +8,18 @@
   --space-4: 1rem;
   --space-6: 1.5rem;
   --radius-md: 0.75rem;
+  --editor-accent: #ffd742;
+  --editor-accent-ink: #1a1606;
+  --editor-shell-border: rgba(255, 255, 255, 0.09);
+  --editor-panel: rgba(31, 35, 41, 0.94);
+  --editor-panel-soft: rgba(40, 44, 52, 0.82);
+  --editor-text: #f4f1e8;
+  --editor-text-soft: rgba(244, 241, 232, 0.76);
+  --editor-text-muted: rgba(244, 241, 232, 0.52);
+  --editor-gap-sm: 0.85rem;
+  --editor-gap-md: 1rem;
+  --editor-gap-lg: 1.35rem;
+  --editor-radius-md: 1rem;
+  --editor-radius-lg: 1.4rem;
+  --editor-radius-xl: 1.7rem;
 }

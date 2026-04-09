@@ -42,3 +42,24 @@ test("selecting a template moves app state to editor-pending-image with selected
   expect(store.get(appScreenAtom)).toBe("editor-pending-image");
   expect(store.get(selectedTemplateIdAtom)).toBe("classic-info-strip");
 });
+
+test("back to library from the editor shell restores the template library", async () => {
+  const user = userEvent.setup();
+  const store = createStore();
+
+  render(
+    <Provider store={store}>
+      <App />
+    </Provider>,
+  );
+
+  const [useTemplateButton] = screen.getAllByRole("button", {
+    name: /use template classic info strip/i,
+  });
+  await user.click(useTemplateButton);
+  await user.click(screen.getByRole("button", { name: /back to library/i }));
+
+  expect(screen.getByRole("heading", { name: /template library/i })).toBeInTheDocument();
+  expect(store.get(appScreenAtom)).toBe("library");
+  expect(store.get(selectedTemplateIdAtom)).toBe(null);
+});

@@ -7,6 +7,7 @@ import {
 } from "../features/editor/panels/panel-state";
 import type { NormalizedMetadata } from "../services/metadata/types";
 import { extractMetadata } from "../services/metadata/extract-metadata";
+import { resolvePresetLayout } from "../template-engine/presets/resolve-preset";
 import { createDataCards } from "../template-engine/schema/create-data-cards";
 import { resolveFields } from "../template-engine/schema/resolve-fields";
 import { templates } from "../template-engine/templates";
@@ -51,6 +52,9 @@ interface EditorSession extends TemplateScopedSession {
 type AppSession = LibrarySession | EditorPendingImageSession | EditorSession;
 
 export type EditorAction =
+  | {
+      type: "return-to-library";
+    }
   | {
       type: "select-template";
       templateId: string;
@@ -328,6 +332,29 @@ function buildFieldSources(
   };
 }
 
+function findPhotoFit(layout: WatermarkTemplate["layout"]): StylePanelValues["imageFit"] | null {
+  if (layout.type === "image") {
+    return layout.binding === "photo" ? (layout.fit ?? "cover") : null;
+  }
+
+  if (layout.type === "text") {
+    return null;
+  }
+
+  for (const child of layout.children) {
+    const match = findPhotoFit(child);
+    if (match !== null) {
+      return match;
+    }
+  }
+
+  return null;
+}
+
+function resolveNumericPadding(padding: WatermarkTemplate["canvas"]["padding"]): number {
+  return typeof padding === "number" ? padding : Math.max(padding.x, padding.y);
+}
+
 const appSessionAtom = atom<AppSession>({
   screen: "library",
 });
@@ -474,6 +501,12 @@ export const editorPreviewResolvedFieldsAtom = atom<ResolvedFieldMap>((get) => {
 
 export const editorDispatchAtom = atom(null, async (get, set, action: EditorAction) => {
   switch (action.type) {
+    case "return-to-library": {
+      set(appSessionAtom, {
+        screen: "library",
+      });
+      return;
+    }
     case "select-template": {
       const template = templateMap.get(action.templateId);
       if (!template) {
@@ -632,13 +665,29 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
         return;
       }
 
+      const template = templateMap.get(currentSession.templateId);
+      if (!template) {
+        return;
+      }
+
+      const nextControls = {
+        ...currentSession.controls,
+        [action.payload.id]: action.payload.value,
+      } as StylePanelValues;
+
+      if (action.payload.id === "outputRatio") {
+        const { preset, layout } = resolvePresetLayout(template, String(action.payload.value));
+        const presetPhotoFit = findPhotoFit(layout);
+        if (presetPhotoFit !== null) {
+          nextControls.imageFit = presetPhotoFit;
+        }
+        nextControls.canvasPadding = resolveNumericPadding(preset.canvas.padding);
+      }
+
       set(
         appSessionAtom,
         updateTemplateScopedSession(currentSession, {
-          controls: {
-            ...currentSession.controls,
-            [action.payload.id]: action.payload.value,
-          } as StylePanelValues,
+          controls: nextControls,
         }),
       );
       return;

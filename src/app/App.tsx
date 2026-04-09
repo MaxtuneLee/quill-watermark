@@ -25,21 +25,25 @@ export function App() {
     });
   };
 
-  return (
-    <main className="app-shell">
-      <header className="app-header">
-        <span className="app-brand">QUILL STUDIO</span>
-      </header>
-      {screen === "library" || selectedTemplate === null ? (
+  if (screen === "library" || selectedTemplate === null) {
+    return (
+      <main className="app-shell">
+        <header className="app-header">
+          <span className="app-brand">QUILL STUDIO</span>
+        </header>
         <TemplateLibraryScreen templates={templates} onSelect={handleTemplateSelect} />
-      ) : (
-        <EditorScreen
-          template={selectedTemplate}
-          instance={editorInstance}
-          importError={importError}
-          dispatch={dispatch}
-        />
-      )}
+      </main>
+    );
+  }
+
+  return (
+    <main className="app-shell app-shell-editor">
+      <EditorScreen
+        template={selectedTemplate}
+        instance={editorInstance}
+        importError={importError}
+        dispatch={dispatch}
+      />
     </main>
   );
 }
