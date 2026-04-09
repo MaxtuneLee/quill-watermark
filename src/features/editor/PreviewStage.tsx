@@ -7,6 +7,7 @@ import {
 } from "../../app/app-state";
 import { resolveLayout } from "../../template-engine/layout/resolve-layout";
 import { loadImageAsset } from "../../template-engine/render/load-image-asset";
+import type { LoadedImageAsset } from "../../template-engine/render/load-image-asset";
 import { renderCanvas } from "../../template-engine/render/render-canvas";
 import type { RenderCanvasScene } from "../../template-engine/render/render-canvas";
 import type { TemplateLayoutNode } from "../../template-engine/types";
@@ -121,6 +122,64 @@ export function PreviewStage() {
     width: PREVIEW_LONG_EDGE,
     height: PREVIEW_LONG_EDGE,
   });
+  const [decodedAsset, setDecodedAsset] = useState<LoadedImageAsset | null>(null);
+  const decodedAssetRef = useRef<LoadedImageAsset | null>(null);
+
+  useEffect(() => {
+    decodedAssetRef.current = decodedAsset;
+  }, [decodedAsset]);
+
+  useEffect(() => {
+    const sourceFile = instance?.sourceFile ?? null;
+
+    if (sourceFile === null) {
+      setDecodedAsset((previousAsset) => {
+        previousAsset?.dispose();
+        return null;
+      });
+      setRenderState("idle");
+      return;
+    }
+
+    let cancelled = false;
+
+    setRenderState("loading");
+
+    void loadImageAsset(sourceFile)
+      .then((nextAsset) => {
+        if (cancelled) {
+          nextAsset.dispose();
+          return;
+        }
+
+        setDecodedAsset((previousAsset) => {
+          previousAsset?.dispose();
+          return nextAsset;
+        });
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setDecodedAsset((previousAsset) => {
+          previousAsset?.dispose();
+          return null;
+        });
+        setRenderState("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [instance?.sourceFile]);
+
+  useEffect(() => {
+    return () => {
+      decodedAssetRef.current?.dispose();
+      decodedAssetRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (template === null || instance === null) {
@@ -128,28 +187,24 @@ export function PreviewStage() {
       return;
     }
 
+    if (decodedAsset === null) {
+      setRenderState((currentState) => (currentState === "error" ? currentState : "loading"));
+      return;
+    }
+
     let disposed = false;
-    let disposeAsset = () => {};
 
     const paint = async () => {
       setRenderState("loading");
 
       try {
-        const imageAsset = await loadImageAsset(instance.sourceFile);
-        disposeAsset = imageAsset.dispose;
-
-        if (disposed) {
-          imageAsset.dispose();
-          return;
-        }
-
         const templateRatio =
           template.canvas.aspectRatio === null
             ? null
             : template.canvas.aspectRatio.width / Math.max(template.canvas.aspectRatio.height, 1);
         const nextCanvasSize = resolveCanvasSize(
-          imageAsset.width,
-          imageAsset.height,
+          decodedAsset.width,
+          decodedAsset.height,
           templateRatio,
         );
         const canvas = canvasRef.current;
@@ -172,7 +227,7 @@ export function PreviewStage() {
             padding: template.canvas.padding,
             background: template.canvas.background,
           },
-          layout: withPhotoIntrinsicSize(template.layout, imageAsset.width, imageAsset.height),
+          layout: withPhotoIntrinsicSize(template.layout, decodedAsset.width, decodedAsset.height),
           resolvedFields: Object.fromEntries(
             Object.entries(resolvedFields).map(([fieldId, field]) => [
               fieldId,
@@ -199,7 +254,7 @@ export function PreviewStage() {
                   type: "image" as const,
                   frame: node.frame,
                   contentBox: node.contentBox,
-                  source: imageAsset.source,
+                  source: decodedAsset.source,
                 };
               }
 
@@ -233,9 +288,8 @@ export function PreviewStage() {
 
     return () => {
       disposed = true;
-      disposeAsset();
     };
-  }, [instance, resolvedFields, template]);
+  }, [decodedAsset, instance, resolvedFields, template]);
 
   if (template === null || instance === null) {
     return (

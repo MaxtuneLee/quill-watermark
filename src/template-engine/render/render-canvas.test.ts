@@ -2,9 +2,16 @@ import { expect, test, vi } from "vite-plus/test";
 import { renderCanvas } from "./render-canvas";
 
 test("draws background, image, and text in the expected order", async () => {
-  const fillRect = vi.fn();
-  const drawImage = vi.fn();
-  const fillText = vi.fn();
+  const callOrder: string[] = [];
+  const fillRect = vi.fn(() => {
+    callOrder.push("fillRect");
+  });
+  const drawImage = vi.fn(() => {
+    callOrder.push("drawImage");
+  });
+  const fillText = vi.fn(() => {
+    callOrder.push("fillText");
+  });
 
   const ctx = {
     fillRect,
@@ -29,4 +36,5 @@ test("draws background, image, and text in the expected order", async () => {
   expect(fillRect).toHaveBeenCalled();
   expect(drawImage).toHaveBeenCalled();
   expect(fillText).toHaveBeenCalledWith("Leica Q2", expect.any(Number), expect.any(Number));
+  expect(callOrder).toEqual(["fillRect", "drawImage", "fillText"]);
 });

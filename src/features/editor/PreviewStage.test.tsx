@@ -38,6 +38,13 @@ beforeEach(() => {
     clip: vi.fn(),
   } as unknown as CanvasRenderingContext2D);
   vi.mocked(metadataService.extractMetadata).mockReset();
+  vi.mocked(loadImageAsset).mockReset();
+  vi.mocked(loadImageAsset).mockResolvedValue({
+    source: {} as CanvasImageSource,
+    width: 1600,
+    height: 900,
+    dispose: vi.fn(),
+  });
   vi.mocked(renderCanvas).mockReset();
 });
 
@@ -82,6 +89,7 @@ test("renders a preview canvas and repaints when resolved fields change", async 
   await waitFor(() => {
     expect(renderCanvas).toHaveBeenCalledTimes(2);
   });
+  expect(loadImageAsset).toHaveBeenCalledTimes(1);
 });
 
 test("renders an explicit empty state when no instance is active", () => {

@@ -37,6 +37,10 @@ function canUseWebShare(shareData: ShareData): boolean {
   return navigator.canShare(shareData);
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 export async function shareImage({
   blob,
   fileName,
@@ -51,8 +55,14 @@ export async function shareImage({
   };
 
   if (canUseWebShare(shareData)) {
-    await navigator.share(shareData);
-    return { method: "share" };
+    try {
+      await navigator.share(shareData);
+      return { method: "share" };
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+    }
   }
 
   downloadImage(blob, fileName);
