@@ -1,52 +1,80 @@
-import { render, screen } from "@testing-library/react";
-import { expect, test, vi } from "vite-plus/test";
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, expect, test } from "vite-plus/test";
 import { EditorScreen } from "./EditorScreen";
-import { templates } from "../../template-engine/templates";
+import { makeLoadedEditorProps, makePendingEditorProps } from "./test-fixtures";
+
+afterEach(() => {
+  cleanup();
+});
 
 test("shows an image importer before a photo is loaded", () => {
-  render(
-    <EditorScreen template={templates[0]} instance={null} importError={null} dispatch={vi.fn()} />,
-  );
+  render(<EditorScreen {...makePendingEditorProps()} />);
+
   expect(screen.getByRole("button", { name: /add photo/i })).toBeInTheDocument();
 });
 
-test("shows preview and panel placeholders after a photo is loaded", () => {
-  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+test("shows desktop style, preview, export, and data panels after a photo is loaded", () => {
+  render(<EditorScreen {...makeLoadedEditorProps()} />);
 
-  render(
-    <EditorScreen
-      template={templates[0]}
-      instance={{
-        sourceFile: file,
-        metadata: {
-          camera: { make: "Leica", model: "Q2" },
-          exposure: {
-            iso: 400,
-            aperture: 1.7,
-            shutterSeconds: 1 / 125,
-            focalLengthMm: 28,
-          },
-          location: { latitude: null, longitude: null },
-          shotTime: null,
-        },
-      }}
-      importError={null}
-      dispatch={vi.fn()}
-    />,
-  );
-
+  expect(screen.getByRole("region", { name: /style panel/i })).toBeInTheDocument();
   expect(screen.getByRole("region", { name: /preview stage/i })).toBeInTheDocument();
-  expect(screen.getByRole("complementary", { name: /editor panels/i })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: /export panel/i })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: /data panel/i })).toBeInTheDocument();
+  expect(screen.getByText(/current template/i)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /switch template/i })).not.toBeInTheDocument();
+});
+
+test("updates canvas padding from the style panel", async () => {
+  const user = userEvent.setup();
+  const props = makeLoadedEditorProps();
+
+  render(<EditorScreen {...props} />);
+
+  const input = screen.getByLabelText(/canvas padding/i);
+  await user.clear(input);
+  await user.type(input, "64");
+
+  expect(props.dispatch).toHaveBeenCalledWith({
+    type: "editor/set-control",
+    payload: { id: "canvasPadding", value: 64 },
+  });
+});
+
+test("toggles a data card from the data panel", async () => {
+  const user = userEvent.setup();
+  const props = makeLoadedEditorProps();
+
+  render(<EditorScreen {...props} />);
+
+  await user.click(screen.getByRole("switch", { name: /show camera model/i }));
+
+  expect(props.dispatch).toHaveBeenCalledWith({
+    type: "editor/set-card-enabled",
+    payload: { id: "camera-model", enabled: false },
+  });
+});
+
+test("updates a manual override from the data panel", async () => {
+  const user = userEvent.setup();
+  const props = makeLoadedEditorProps();
+
+  render(<EditorScreen {...props} />);
+
+  const input = screen.getByLabelText(/author override/i);
+  await user.clear(input);
+  await user.type(input, "By Harbor Studio");
+
+  expect(props.dispatch).toHaveBeenCalledWith({
+    type: "set-field-override",
+    fieldId: "authorLine",
+    value: "By Harbor Studio",
+  });
 });
 
 test("shows an explicit import error in pending-image state", () => {
   render(
-    <EditorScreen
-      template={templates[0]}
-      instance={null}
-      importError="Could not read image metadata."
-      dispatch={vi.fn()}
-    />,
+    <EditorScreen {...makePendingEditorProps({ importError: "Could not read image metadata." })} />,
   );
 
   expect(screen.getByRole("alert")).toHaveTextContent("Could not read image metadata.");

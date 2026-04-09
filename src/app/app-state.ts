@@ -66,6 +66,27 @@ export type EditorAction =
   | {
       type: "replace-metadata";
       metadata: NormalizedMetadata;
+    }
+  | {
+      type: "editor/set-control";
+      payload: {
+        id: string;
+        value: string | number | boolean;
+      };
+    }
+  | {
+      type: "editor/set-card-enabled";
+      payload: {
+        id: string;
+        enabled: boolean;
+      };
+    }
+  | {
+      type: "editor/set-export-option";
+      payload: {
+        id: "format" | "multiplier";
+        value: string | number;
+      };
     };
 
 const emptyMetadata: NormalizedMetadata = {
@@ -485,5 +506,9 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
       );
       return;
     }
+    case "editor/set-control":
+    case "editor/set-card-enabled":
+    case "editor/set-export-option":
+      return;
   }
 });
