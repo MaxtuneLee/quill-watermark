@@ -21,4 +21,14 @@ export default defineConfig({
       "@": resolve(__dirname, "./src"),
     },
   },
+  // experimental: {
+  //   bundledDev: true,
+  // },
+  // build: {
+  //   rolldownOptions: {
+  //     experimental: {
+  //       lazyBarrel: true,
+  //     },
+  //   },
+  // },
 });
