@@ -1,7 +1,12 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import { motion } from "motion/react";
 import type { EditorAction } from "../../app/app-state";
 import { Button } from "../../components/ui";
+import { cn } from "../../lib/utils";
+import { PlusIcon } from "lucide-react";
+
+const MotionButton = motion.create(Button);
 
 interface ImageImporterProps {
   dispatch: (action: EditorAction) => Promise<void> | void;
@@ -11,6 +16,11 @@ interface ImageImporterProps {
   className?: string;
   description?: string;
   title?: string;
+  buttonClassName?: string;
+  buttonSize?: "sm" | "default" | "lg" | "icon" | "icon-sm" | "icon-lg";
+  iconOnly?: boolean;
+  onPressFeedback?: () => void;
+  prefersReducedMotion?: boolean;
 }
 
 export function ImageImporter({
@@ -21,6 +31,11 @@ export function ImageImporter({
   className,
   description = "Import one photo to begin editing this template.",
   title,
+  buttonClassName,
+  buttonSize = "lg",
+  iconOnly = false,
+  onPressFeedback,
+  prefersReducedMotion = false,
 }: ImageImporterProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -47,7 +62,7 @@ export function ImageImporter({
   return (
     <section
       aria-label="Image importer"
-      className={`grid w-full max-w-sm justify-items-center gap-4 text-center ${className ?? ""}`}
+      className={cn("grid w-full max-w-sm justify-items-center gap-4 text-center", className)}
     >
       {title ? (
         <h3 className="font-heading text-[clamp(1.45rem,2vw,2.1rem)] font-semibold tracking-[-0.04em] text-white">
@@ -62,16 +77,24 @@ export function ImageImporter({
           {importError}
         </p>
       ) : null}
-      <Button
+      <MotionButton
         type="button"
-        size="lg"
-        className="min-w-52 border-primary/45 bg-primary/90 text-primary-foreground hover:bg-primary"
-        onClick={() => inputRef.current?.click()}
+        size={buttonSize}
+        className={cn(
+          "min-w-52 rounded-none border-primary/45 bg-primary/90 text-primary-foreground hover:bg-primary",
+          buttonClassName,
+        )}
+        onClick={() => {
+          onPressFeedback?.();
+          inputRef.current?.click();
+        }}
         disabled={isImporting}
         aria-label={buttonAriaLabel}
+        whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
+        transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
       >
-        {isImporting ? "Importing..." : buttonLabel}
-      </Button>
+        {iconOnly ? <PlusIcon /> : isImporting ? "Importing..." : buttonLabel}
+      </MotionButton>
       <input
         ref={inputRef}
         type="file"

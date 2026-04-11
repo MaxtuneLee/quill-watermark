@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { WatermarkTemplate } from "../../../template-engine/types";
 import type { StyleControlId, StyleControlValue, StylePanelValues } from "./panel-state";
 import { brandPositionOptions, imageFillOptions, typographyThemeOptions } from "./panel-state";
+import { cn } from "../../../lib/utils";
 import {
   ColorPicker,
   ColorPickerArea,
@@ -19,6 +20,8 @@ interface StylePanelProps {
   template: WatermarkTemplate;
   values: StylePanelValues;
   onControlChange: (id: StyleControlId, value: StyleControlValue) => void;
+  layout?: "rail" | "mobile-strip";
+  sections?: Array<"canvas" | "type" | "brand">;
 }
 
 function ChoiceGroup<TValue extends string | number>({
@@ -174,14 +177,22 @@ function ColorField({
 function RailSection({
   children,
   heading,
+  layout = "rail",
   summary,
 }: {
   children: ReactNode;
   heading: string;
+  layout?: "rail" | "mobile-strip";
   summary?: string;
 }) {
   return (
-    <section className="editor-panel editor-panel-block grid gap-4 border-t border-white/8 pt-5 first:border-t-0 first:pt-0">
+    <section
+      className={cn(
+        "editor-panel editor-panel-block grid gap-4 border-t border-white/8 pt-5 first:border-t-0 first:pt-0",
+        layout === "mobile-strip" &&
+          "w-max min-w-[13rem] border border-white/10 bg-white/[0.03] p-3.5 first:border first:pt-3.5",
+      )}
+    >
       <div className="grid gap-1.5">
         <h3 className="font-heading text-[1.25rem] font-semibold tracking-[-0.03em] text-foreground">
           {heading}
@@ -195,7 +206,13 @@ function RailSection({
   );
 }
 
-export function StylePanel({ template, values, onControlChange }: StylePanelProps) {
+export function StylePanel({
+  template,
+  values,
+  onControlChange,
+  layout = "rail",
+  sections = ["canvas", "type", "brand"],
+}: StylePanelProps) {
   const ratioOptions = [
     { label: "Original", value: "original" as const },
     ...template.aspectSupport.map((aspect) => ({
@@ -207,120 +224,135 @@ export function StylePanel({ template, values, onControlChange }: StylePanelProp
   return (
     <section
       aria-label="Style panel"
-      className="editor-panel editor-panel-surface grid gap-5"
+      className={cn(
+        "editor-panel editor-panel-surface grid gap-5",
+        layout === "mobile-strip" && "overflow-hidden",
+      )}
       role="region"
     >
-      <div className="editor-panel-content grid gap-5">
-        <RailSection heading="Canvas">
-          <ChoiceGroup
-            options={ratioOptions}
-            value={values.outputRatio}
-            onChange={(value) => {
-              onControlChange("outputRatio", value);
-            }}
-          />
+      <div
+        className={cn(
+          "editor-panel-content grid gap-5",
+          layout === "mobile-strip" &&
+            "flex items-start gap-3 overflow-x-auto pb-3 [scrollbar-color:rgba(255,255,255,0.28)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/25",
+        )}
+      >
+        {sections.includes("canvas") ? (
+          <RailSection heading="Canvas" layout={layout}>
+            <ChoiceGroup
+              options={ratioOptions}
+              value={values.outputRatio}
+              onChange={(value) => {
+                onControlChange("outputRatio", value);
+              }}
+            />
 
-          <ChoiceGroup
-            options={imageFillOptions}
-            value={values.imageFit}
-            onChange={(value) => {
-              onControlChange("imageFit", value);
-            }}
-          />
+            <ChoiceGroup
+              options={imageFillOptions}
+              value={values.imageFit}
+              onChange={(value) => {
+                onControlChange("imageFit", value);
+              }}
+            />
 
-          <div className="grid grid-cols-2 gap-3">
-            <NumberField
-              label="Padding Top"
-              min={0}
-              max={160}
-              value={values.canvasPaddingTop}
-              onChange={(value) => {
-                onControlChange("canvasPaddingTop", value);
-              }}
-            />
-            <NumberField
-              label="Padding Right"
-              min={0}
-              max={160}
-              value={values.canvasPaddingRight}
-              onChange={(value) => {
-                onControlChange("canvasPaddingRight", value);
-              }}
-            />
-            <NumberField
-              label="Padding Bottom"
-              min={0}
-              max={160}
-              value={values.canvasPaddingBottom}
-              onChange={(value) => {
-                onControlChange("canvasPaddingBottom", value);
-              }}
-            />
-            <NumberField
-              label="Padding Left"
-              min={0}
-              max={160}
-              value={values.canvasPaddingLeft}
-              onChange={(value) => {
-                onControlChange("canvasPaddingLeft", value);
-              }}
-            />
-          </div>
+            <div className="grid grid-cols-2 gap-3">
+              <NumberField
+                label="Padding Top"
+                min={0}
+                max={160}
+                value={values.canvasPaddingTop}
+                onChange={(value) => {
+                  onControlChange("canvasPaddingTop", value);
+                }}
+              />
+              <NumberField
+                label="Padding Right"
+                min={0}
+                max={160}
+                value={values.canvasPaddingRight}
+                onChange={(value) => {
+                  onControlChange("canvasPaddingRight", value);
+                }}
+              />
+              <NumberField
+                label="Padding Bottom"
+                min={0}
+                max={160}
+                value={values.canvasPaddingBottom}
+                onChange={(value) => {
+                  onControlChange("canvasPaddingBottom", value);
+                }}
+              />
+              <NumberField
+                label="Padding Left"
+                min={0}
+                max={160}
+                value={values.canvasPaddingLeft}
+                onChange={(value) => {
+                  onControlChange("canvasPaddingLeft", value);
+                }}
+              />
+            </div>
 
-          <div className="grid gap-4">
-            <ColorField
-              label="Canvas Background"
-              value={values.canvasBackground}
-              onChange={(value) => {
-                onControlChange("canvasBackground", value);
-              }}
-            />
-            <ColorField
-              label="Text Color"
-              value={values.textColor}
-              onChange={(value) => {
-                onControlChange("textColor", value);
-              }}
-            />
-            <ColorField
-              label="Logo Color"
-              value={values.logoColor}
-              onChange={(value) => {
-                onControlChange("logoColor", value);
-              }}
-            />
-          </div>
-        </RailSection>
+            <div className="grid gap-4">
+              <ColorField
+                label="Canvas Background"
+                value={values.canvasBackground}
+                onChange={(value) => {
+                  onControlChange("canvasBackground", value);
+                }}
+              />
+              <ColorField
+                label="Text Color"
+                value={values.textColor}
+                onChange={(value) => {
+                  onControlChange("textColor", value);
+                }}
+              />
+              <ColorField
+                label="Logo Color"
+                value={values.logoColor}
+                onChange={(value) => {
+                  onControlChange("logoColor", value);
+                }}
+              />
+            </div>
+          </RailSection>
+        ) : null}
 
-        <RailSection heading="Type">
-          <ChoiceGroup
-            options={typographyThemeOptions}
-            value={values.typographyTheme}
-            onChange={(value) => {
-              onControlChange("typographyTheme", value);
-            }}
-          />
-        </RailSection>
+        {sections.includes("type") ? (
+          <RailSection heading="Type" layout={layout}>
+            <ChoiceGroup
+              options={typographyThemeOptions}
+              value={values.typographyTheme}
+              onChange={(value) => {
+                onControlChange("typographyTheme", value);
+              }}
+            />
+          </RailSection>
+        ) : null}
 
-        <RailSection heading="Brand">
-          <SliderField
-            label="Logo Size"
-            min={0.5}
-            max={3}
-            step={0.1}
-            value={values.logoScale}
-            onChange={(value) => {
-              onControlChange("logoScale", value);
-            }}
-          />
-          <ChoiceGroup
-            options={brandPositionOptions}
-            value={values.brandPosition}
-            onChange={(value) => {
-              onControlChange("brandPosition", value);
-            }}
-          />
-        </RailSection>
+        {sections.includes("brand") ? (
+          <RailSection heading="Brand" layout={layout}>
+            <SliderField
+              label="Logo Size"
+              min={0.5}
+              max={3}
+              step={0.1}
+              value={values.logoScale}
+              onChange={(value) => {
+                onControlChange("logoScale", value);
+              }}
+            />
+            <ChoiceGroup
+              options={brandPositionOptions}
+              value={values.brandPosition}
+              onChange={(value) => {
+                onControlChange("brandPosition", value);
+              }}
+            />
+          </RailSection>
+        ) : null}
       </div>
     </section>
   );

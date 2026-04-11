@@ -110,6 +110,11 @@
       "source": "pbakaus/impeccable",
       "sourceType": "github",
       "computedHash": "9f96013a3fcd2d4a8337293f9f6872bde2060520224a7994b87418eb4ef76001"
+    },
+    "web-haptics": {
+      "source": "lochie/web-haptics",
+      "sourceType": "github",
+      "computedHash": "a6dce0fce9dc37f4dac87cd9ed2dc0e32e1ec3a5d8c860e1af07fee670295b7b"
     }
   }
 }

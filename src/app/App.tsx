@@ -130,7 +130,7 @@ function EditorRoute() {
       className="app-shell-editor dark min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(255,214,63,0.08),transparent_24%),linear-gradient(180deg,#1f1b12,#0d0b07)] text-[oklch(0.95_0.012_95)]"
       data-layout="full-bleed"
     >
-      <header className="flex items-center gap-3 border-b border-white/8 px-5 py-3">
+      <header className="hidden items-center gap-3 border-b border-white/8 px-5 py-3 min-[781px]:flex">
         <img src="/quill-logo.png" alt="Quill Studio" className="h-7 w-7 object-contain" />
         <span className="text-sm font-semibold tracking-[0.18em] text-[oklch(0.95_0.012_95_/_0.78)] uppercase">
           QUILL STUDIO

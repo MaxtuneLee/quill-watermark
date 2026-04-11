@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { forwardRef, useEffect, useId, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   activeTemplateAtom,
   editorControlsAtom,
@@ -7,7 +7,6 @@ import {
   editorPreviewResolvedFieldsAtom,
   type EditorAction,
 } from "../../app/app-state";
-import { Button, Slider } from "../../components/ui";
 import { resolvePresetLayout } from "../../template-engine/presets/resolve-preset";
 import { loadImageAsset } from "../../template-engine/render/load-image-asset";
 import type { LoadedImageAsset } from "../../template-engine/render/load-image-asset";
@@ -17,11 +16,9 @@ import {
   resolveAspectRatio,
   resolveCanvasSize,
 } from "./render-editor-canvas";
-import { ImageImporter } from "./ImageImporter";
 
-const FIT_PREVIEW_SCALE = 0.7;
-
-type ViewMode = "fit" | "zoom";
+const DESKTOP_PREVIEW_SCALE = 0.7;
+const MOBILE_PREVIEW_SCALE = 0.9;
 
 interface CanvasSize {
   width: number;
@@ -47,10 +44,9 @@ interface PreviewStageProps {
 }
 
 export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(function PreviewStage(
-  { dispatch, importError = null, onRenderStateChange },
+  { dispatch: _dispatch, importError = null, onRenderStateChange },
   ref,
 ) {
-  const fallbackDispatch = dispatch ?? (() => undefined);
   const template = useAtomValue(activeTemplateAtom);
   const controls = useAtomValue(editorControlsAtom);
   const instance = useAtomValue(editorInstanceAtom);
@@ -58,9 +54,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sourceCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasViewportRef = useRef<HTMLDivElement | null>(null);
-  const zoomControlId = useId();
-  const [viewMode, setViewMode] = useState<ViewMode>("fit");
-  const [zoomPercent, setZoomPercent] = useState(100);
   const [renderState, setRenderState] = useState<PreviewRenderState>("idle");
   const [canvasSize, setCanvasSize] = useState<CanvasSize>({
     width: PREVIEW_LONG_EDGE,
@@ -176,14 +169,17 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
       viewportHeight / Math.max(canvasSize.height, 1),
     );
     const previewScale =
-      viewMode === "fit" ? fitScale * FIT_PREVIEW_SCALE : fitScale * (zoomPercent / 100);
+      fitScale *
+      (typeof window !== "undefined" && window.innerWidth < 781
+        ? MOBILE_PREVIEW_SCALE
+        : DESKTOP_PREVIEW_SCALE);
     const drawWidth = canvasSize.width * previewScale;
     const drawHeight = canvasSize.height * previewScale;
     const drawX = (viewportWidth - drawWidth) / 2;
     const drawY = (viewportHeight - drawHeight) / 2;
 
     context.drawImage(sourceCanvas, drawX, drawY, drawWidth, drawHeight);
-  }, [canvasSize, renderState, viewMode, viewportSize, zoomPercent]);
+  }, [canvasSize, renderState, viewportSize]);
 
   useEffect(() => {
     const sourceFile = instance?.sourceFile ?? null;
@@ -319,25 +315,26 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     return (
       <section
         aria-label="Preview stage"
-        className="editor-preview-stage grid min-h-full w-full content-center gap-6 px-8 py-10"
+        className="editor-preview-stage grid min-h-full w-full content-center gap-6 px-5 py-8 min-[781px]:px-8 min-[781px]:py-10"
         role="region"
       >
-        <div className="editor-preview-placeholder-wrap grid min-h-[min(74vh,54rem)] place-items-center">
-          <div className="editor-preview-placeholder-frame relative flex max-h-[calc(100vh-14rem)] w-full max-w-[min(64vw,50rem)] items-center justify-center overflow-hidden rounded-none border border-white/10 bg-[#0d0d0d] shadow-[0_20px_68px_rgba(0,0,0,0.34)]">
+        <div className="editor-preview-placeholder-wrap grid min-h-[min(40vh,24rem)] place-items-center min-[781px]:min-h-[min(74vh,54rem)]">
+          <div className="editor-preview-placeholder-frame relative flex aspect-[4/5] w-full max-w-[min(100%,19rem)] items-end justify-start overflow-hidden rounded-none border border-white/10 bg-[#0d0d0d] shadow-[0_20px_68px_rgba(0,0,0,0.28)] min-[781px]:aspect-auto min-[781px]:max-h-[calc(100vh-14rem)] min-[781px]:max-w-[min(64vw,50rem)] min-[781px]:items-center min-[781px]:justify-center">
             <img
               alt={`${template.name} template preview`}
-              className="editor-preview-placeholder-image block max-h-[calc(100vh-14rem)] w-full object-contain opacity-32"
+              className="editor-preview-placeholder-image block h-full w-full object-cover opacity-40 min-[781px]:max-h-[calc(100vh-14rem)] min-[781px]:object-contain"
               src={template.coverImage}
             />
-            <div className="editor-preview-placeholder-overlay absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_center,rgba(12,11,9,0.18),rgba(12,11,9,0.62))] p-8">
-              <ImageImporter
-                buttonAriaLabel="Open media picker"
-                buttonLabel="Open Media Picker"
-                description="Choose one image and place it directly into the active template."
-                dispatch={fallbackDispatch}
-                importError={importError}
-                title="Select Media"
-              />
+            <div className="editor-preview-placeholder-overlay absolute inset-0 bg-[linear-gradient(180deg,rgba(9,8,6,0.18),rgba(9,8,6,0.72))]" />
+            <div className="absolute right-3 bottom-3 left-3 grid gap-1 border border-white/10 bg-black/52 px-3 py-2 text-left min-[781px]:hidden">
+              <p className="text-[0.68rem] font-semibold tracking-[0.14em] text-white/45 uppercase">
+                Preview
+              </p>
+              <p className="truncate font-heading text-[1rem] text-white">{template.name}</p>
+              <p className="text-xs leading-5 text-white/62">
+                Add an image above to start editing.
+              </p>
+              {importError ? <p className="text-xs leading-5 text-red-200">{importError}</p> : null}
             </div>
           </div>
         </div>
@@ -353,7 +350,7 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     >
       <div
         ref={canvasViewportRef}
-        className="editor-preview-canvas-wrap editor-preview-canvas-wrap-live relative min-h-0 min-w-0 w-full overflow-hidden pb-18"
+        className="editor-preview-canvas-wrap editor-preview-canvas-wrap-live relative min-h-[19rem] min-w-0 w-full overflow-hidden min-[781px]:min-h-0"
       >
         <canvas
           ref={canvasRef}
@@ -361,42 +358,6 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
           className="editor-preview-canvas block h-full w-full"
           role="img"
         />
-      </div>
-      <div className="editor-preview-toolbar absolute bottom-8 left-1/2 z-10 flex w-fit max-w-[calc(100%-4rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-white/10 bg-black/42 px-3 py-2 backdrop-blur-md">
-        <Button
-          variant="outline"
-          size="sm"
-          className="editor-pill-button h-8 border-white/10 bg-white/[0.03] px-3 text-xs text-white/80 hover:bg-white/[0.08] hover:text-white"
-          aria-pressed={viewMode === "fit"}
-          onClick={() => {
-            setViewMode("fit");
-          }}
-        >
-          Fit
-        </Button>
-        <div className="editor-preview-zoom flex min-w-40 items-center gap-2">
-          <label htmlFor={zoomControlId} className="text-xs text-white/62">
-            Zoom
-          </label>
-          <Slider
-            aria-labelledby={zoomControlId}
-            className="editor-zoom-slider flex-1 [&_[data-slot=slider-control]]:flex [&_[data-slot=slider-control]]:w-full [&_[data-slot=slider-control]]:items-center [&_[data-slot=slider-track]]:relative [&_[data-slot=slider-track]]:h-1 [&_[data-slot=slider-track]]:w-full [&_[data-slot=slider-track]]:rounded-full [&_[data-slot=slider-track]]:bg-white/10 [&_[data-slot=slider-range]]:h-full [&_[data-slot=slider-range]]:rounded-full [&_[data-slot=slider-range]]:bg-primary [&_[data-slot=slider-thumb]]:size-3.5 [&_[data-slot=slider-thumb]]:rounded-full [&_[data-slot=slider-thumb]]:border-2 [&_[data-slot=slider-thumb]]:border-primary [&_[data-slot=slider-thumb]]:bg-white"
-            max={200}
-            min={25}
-            step={1}
-            value={zoomPercent}
-            onValueChange={(value) => {
-              setViewMode("zoom");
-              setZoomPercent(Array.isArray(value) ? (value[0] ?? zoomPercent) : value);
-            }}
-          />
-        </div>
-        <output
-          aria-live="polite"
-          className="min-w-10 text-right text-xs font-semibold text-white/68"
-        >
-          {zoomPercent}%
-        </output>
       </div>
       {renderState === "error" ? (
         <p role="alert" className="text-center text-sm text-red-200">

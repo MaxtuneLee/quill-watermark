@@ -11,6 +11,7 @@ import { InputGroup, InputGroupInput } from "../../../components/ui/input-group"
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { cameraBrandOptions, type CameraBrandName } from "../../../icons/camera-brand-icons";
 import { DatabaseIcon } from "../../../icons/ui-icons";
+import { cn } from "../../../lib/utils";
 import type { ResolvedFieldMap, TemplateDataCard } from "../../../template-engine/types";
 
 interface DataPanelProps {
@@ -22,6 +23,8 @@ interface DataPanelProps {
   resolvedFields: ResolvedFieldMap;
   onCardEnabledChange: (cardId: string, enabled: boolean) => void;
   onOverrideChange: (fieldId: string, value: string) => void;
+  layout?: "rail" | "mobile-strip";
+  cardIds?: string[];
 }
 
 function modeLabel(mode: TemplateDataCard["mode"]) {
@@ -341,7 +344,11 @@ export function DataPanel({
   resolvedFields,
   onCardEnabledChange,
   onOverrideChange,
+  layout = "rail",
+  cardIds,
 }: DataPanelProps) {
+  const visibleDataCards =
+    cardIds === undefined ? dataCards : dataCards.filter((card) => cardIds.includes(card.id));
   const expressionOptions = Object.keys(resolvedFields)
     .filter((fieldId) => {
       return resolvedFields[fieldId]?.kind === "text";
@@ -351,12 +358,21 @@ export function DataPanel({
   return (
     <section
       aria-label="Data panel"
-      className="editor-panel editor-panel-surface grid gap-5"
+      className={cn(
+        "editor-panel editor-panel-surface grid gap-5",
+        layout === "mobile-strip" && "overflow-hidden",
+      )}
       role="region"
     >
-      <div className="editor-panel-content grid gap-4">
+      <div
+        className={cn(
+          "editor-panel-content grid gap-4",
+          layout === "mobile-strip" &&
+            "flex gap-3 overflow-x-auto pb-1 [scrollbar-color:rgba(255,255,255,0.28)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/25",
+        )}
+      >
         {!hasImage ? (
-          <div className="grid gap-2 border border-dashed border-white/12 bg-white/[0.02] px-4 py-5">
+          <div className="grid min-w-[14rem] gap-2 border border-dashed border-white/12 bg-white/[0.02] px-4 py-4">
             <h3 className="font-heading text-sm leading-5 font-medium tracking-[-0.01em] text-foreground/88">
               No photo yet
             </h3>
@@ -365,18 +381,28 @@ export function DataPanel({
             </p>
           </div>
         ) : (
-          <div className="editor-data-card-list grid gap-4">
-            {dataCards.map((card) => {
+          <div
+            className={cn(
+              "editor-data-card-list grid gap-4",
+              layout === "mobile-strip" && "flex gap-3",
+            )}
+          >
+            {visibleDataCards.map((card) => {
               return (
                 <article
-                  className="editor-data-card grid gap-3 border border-white/8 bg-white/[0.03] p-4"
+                  className={cn(
+                    "editor-data-card grid gap-3 border border-white/8 bg-white/[0.03] p-4",
+                    layout === "mobile-strip" && "min-w-[14rem] gap-2.5 p-3",
+                  )}
                   key={card.id}
                 >
                   <div className="editor-data-card-topline flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.03]">
-                        <DatabaseIcon className="size-4 text-foreground/55" />
-                      </span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      {layout === "mobile-strip" ? null : (
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.03]">
+                          <DatabaseIcon className="size-4 text-foreground/55" />
+                        </span>
+                      )}
                       <h3 className="font-heading text-sm leading-5 font-medium tracking-[-0.01em] text-foreground/88">
                         {card.title}
                       </h3>

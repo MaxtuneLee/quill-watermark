@@ -1,10 +1,16 @@
+import { useState } from "react";
+import { motion } from "motion/react";
 import { UploadIcon } from "@/components/ui/upload";
 import { Button } from "../../../components/ui";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { MorphPanel } from "../../../components/ui/morph-panel";
 import { DownloadIcon } from "../../../icons/ui-icons";
 import type { ExportFormat, ExportMultiplier, ExportPanelValues } from "./panel-state";
 import { exportFormatOptions, exportMultiplierOptions } from "./panel-state";
 import { CogIcon } from "@/components/ui/cog";
+import { cn } from "../../../lib/utils";
+
+const MotionButton = motion.create(Button);
 
 interface ExportPanelProps {
   disabled: boolean;
@@ -14,6 +20,10 @@ interface ExportPanelProps {
   onMultiplierChange: (value: ExportMultiplier) => void;
   onExport: () => Promise<void>;
   onShare: () => Promise<void>;
+  layout?: "rail" | "mobile";
+  onImpactFeedback?: (type?: "" | "light" | "medium" | "heavy") => void;
+  onSelectionFeedback?: () => void;
+  prefersReducedMotion?: boolean;
 }
 
 export function ExportPanel({
@@ -24,7 +34,139 @@ export function ExportPanel({
   onMultiplierChange,
   onExport,
   onShare,
+  layout = "rail",
+  onImpactFeedback,
+  onSelectionFeedback,
+  prefersReducedMotion = false,
 }: ExportPanelProps) {
+  const [isMobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+
+  if (layout === "mobile") {
+    return (
+      <section
+        aria-label="Export panel"
+        className="editor-mobile-export-panel relative flex items-start justify-end gap-2"
+        role="region"
+      >
+        <MorphPanel
+          open={isMobileSettingsOpen}
+          onOpenChange={setMobileSettingsOpen}
+          panelClassName="w-[min(18rem,calc(100vw-2rem))] rounded-none"
+          bodyClassName="grid gap-0"
+          trigger={({ open, panelId, toggle }) => (
+            <MotionButton
+              type="button"
+              variant="outline"
+              size="icon-lg"
+              className={cn(
+                "rounded-none border-white/10 bg-white/[0.04] text-white/82 transition-[background-color,border-color] duration-200 ease-out hover:bg-white/[0.08]",
+                open && "border-primary/45 bg-primary/10 text-primary",
+              )}
+              aria-controls={panelId}
+              aria-label={open ? "Close output settings" : "Open output settings"}
+              aria-expanded={open}
+              onClick={() => {
+                onSelectionFeedback?.();
+                toggle();
+              }}
+              whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
+              transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <CogIcon />
+            </MotionButton>
+          )}
+        >
+          <section aria-label="Output settings">
+            <div className="grid gap-2 border-b border-white/8 px-3 py-3">
+              <span className="text-[0.68rem] font-semibold tracking-[0.14em] text-white/50 uppercase">
+                Format
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {exportFormatOptions.map((option) => (
+                  <MotionButton
+                    key={option.value}
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-none border-white/10 bg-transparent px-2.5 text-[0.72rem] text-white/72 hover:bg-white/[0.08] aria-pressed:border-primary/55 aria-pressed:bg-primary/12 aria-pressed:text-primary"
+                    aria-pressed={values.format === option.value}
+                    onClick={() => {
+                      onSelectionFeedback?.();
+                      onFormatChange(option.value);
+                    }}
+                    whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
+                    transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    {option.label}
+                  </MotionButton>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-2 px-3 py-3">
+              <span className="text-[0.68rem] font-semibold tracking-[0.14em] text-white/50 uppercase">
+                Scale
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {exportMultiplierOptions.map((option) => (
+                  <MotionButton
+                    key={option.value}
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-none border-white/10 bg-transparent px-2.5 text-[0.72rem] text-white/72 hover:bg-white/[0.08] aria-pressed:border-primary/55 aria-pressed:bg-primary/12 aria-pressed:text-primary"
+                    aria-pressed={values.multiplier === option.value}
+                    onClick={() => {
+                      onSelectionFeedback?.();
+                      onMultiplierChange(option.value);
+                    }}
+                    whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
+                    transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    {option.label}
+                  </MotionButton>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-2 border-t border-white/8 px-3 py-3">
+              <span className="text-[0.68rem] font-semibold tracking-[0.14em] text-white/50 uppercase">
+                Share
+              </span>
+              <MotionButton
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-none justify-start border-white/10 bg-transparent px-2.5 text-[0.72rem] text-white/72 hover:bg-white/[0.08]"
+                aria-label="Share image"
+                disabled={disabled}
+                onClick={() => {
+                  onImpactFeedback?.("medium");
+                  void onShare();
+                }}
+                whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
+                transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <UploadIcon />
+                Share Image
+              </MotionButton>
+            </div>
+          </section>
+        </MorphPanel>
+        <MotionButton
+          size="icon-lg"
+          className="rounded-none border-0 bg-primary/90 text-primary-foreground hover:bg-primary"
+          aria-label={statusMessage ?? "Export image"}
+          disabled={disabled}
+          onClick={() => {
+            onImpactFeedback?.("medium");
+            void onExport();
+          }}
+          whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
+          transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <DownloadIcon data-icon="inline-start" />
+        </MotionButton>
+      </section>
+    );
+  }
+
   return (
     <section
       aria-label="Export panel"

@@ -141,8 +141,10 @@ test("shows the full workspace shell with a media placeholder before a photo is 
   ).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: /detailed settings/i })).toBeInTheDocument();
   expect(screen.getByRole("region", { name: /data panel/i })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: /select media/i })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /open media picker/i })).toBeInTheDocument();
+  expect(
+    screen.getByRole("img", { name: /classic info strip template preview/i }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/add an image above to start editing/i)).toBeInTheDocument();
   expect(screen.getByText(/import a photo to review the template fields/i)).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: /camera model/i })).not.toBeInTheDocument();
 });
@@ -395,7 +397,7 @@ test("shows the brand selector on classic info strip templates that render camer
 test("shows an explicit import error in pending-image state", async () => {
   await renderPendingEditorScreen({ importError: "Could not read image metadata." });
 
-  expect(screen.getByRole("alert")).toHaveTextContent("Could not read image metadata.");
+  expect(screen.getByText("Could not read image metadata.")).toBeInTheDocument();
 });
 
 test("shows binding expressions as the default manual value and preserves freeform input", async () => {

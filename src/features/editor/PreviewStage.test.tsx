@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { Provider, createStore } from "jotai";
-import { beforeEach, expect, test, vi } from "vite-plus/test";
+import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import * as metadataService from "../../services/metadata/extract-metadata";
 import * as layoutService from "../../template-engine/layout/resolve-layout";
 import { editorDispatchAtom } from "../../app/app-state";
@@ -57,6 +57,10 @@ beforeEach(() => {
     dispose: vi.fn(),
   });
   vi.mocked(renderCanvas).mockReset();
+});
+
+afterEach(() => {
+  cleanup();
 });
 
 function findImageNode(
@@ -151,8 +155,10 @@ test("renders an explicit empty state when no instance is active", () => {
     </Provider>,
   );
 
-  expect(screen.getByRole("heading", { name: /select media/i })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /open media picker/i })).toBeInTheDocument();
+  expect(
+    screen.getByRole("img", { name: /classic info strip template preview/i }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/add an image above to start editing/i)).toBeInTheDocument();
 });
 
 test("renders the empty preview frame without rounded corners and keeps the cover image fully visible", () => {
@@ -173,8 +179,8 @@ test("renders the empty preview frame without rounded corners and keeps the cove
   const placeholderImage = container.querySelector(".editor-preview-placeholder-image");
 
   expect(placeholderFrame).toHaveClass("rounded-none");
-  expect(placeholderFrame).toHaveClass("max-w-[min(64vw,50rem)]");
-  expect(placeholderImage).toHaveClass("object-contain");
+  expect(placeholderFrame).toHaveClass("min-[781px]:max-w-[min(64vw,50rem)]");
+  expect(placeholderImage).toHaveClass("min-[781px]:object-contain");
 });
 
 test("preserves text alignment from resolved layout nodes when building render scene", async () => {
@@ -960,7 +966,7 @@ test("renders preview scene without finish controls", async () => {
   expect(latestScene?.canvas.surfaceInset).toBeUndefined();
 });
 
-test("renders a compact preview toolbar", async () => {
+test("removes the preview toolbar and uses the full viewport for the canvas", async () => {
   const store = createStore();
   const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
   vi.mocked(metadataService.extractMetadata).mockResolvedValue({
@@ -991,21 +997,15 @@ test("renders a compact preview toolbar", async () => {
     expect(renderCanvas).toHaveBeenCalled();
   });
 
-  const toolbar = container.querySelector(".editor-preview-toolbar");
-  const zoomGroup = container.querySelector(".editor-preview-zoom");
-  expect(toolbar?.className).toContain("gap-2");
-  expect(toolbar?.className).toContain("rounded-xl");
-  expect(toolbar?.className).toContain("px-3");
-  expect(toolbar?.className).toContain("py-2");
-  expect(toolbar?.className).toContain("left-1/2");
-  expect(toolbar?.className).toContain("-translate-x-1/2");
-  expect(toolbar?.className).toContain("w-fit");
-  expect(zoomGroup?.className).toContain("min-w-40");
-  expect(within(toolbar as HTMLElement).getByText(/^zoom$/i)).toHaveClass("text-xs");
-  expect(within(toolbar as HTMLElement).getByText(/^100%$/i)).toHaveClass("text-xs");
+  expect(container.querySelector(".editor-preview-toolbar")).toBeNull();
+  expect(container.querySelector(".editor-preview-zoom")).toBeNull();
+  expect(container.querySelector(".editor-preview-canvas-wrap-live")).not.toHaveClass("pb-14");
+  expect(container.querySelector(".editor-preview-canvas-wrap-live")).not.toHaveClass(
+    "min-[781px]:pb-18",
+  );
 });
 
-test("fit mode keeps the preview centered at 70 percent of the available viewport", async () => {
+test("fit mode keeps the preview centered at 90 percent of the mobile viewport", async () => {
   const store = createStore();
   const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
   const sourceContext = {
