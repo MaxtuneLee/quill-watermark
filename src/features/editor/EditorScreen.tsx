@@ -284,7 +284,7 @@ function DesktopWorkspace({
   const [leftRailTab, setLeftRailTab] = useState<"presets" | "details">("presets");
 
   return (
-    <div className="editor-workspace hidden h-screen grid-cols-[17.5rem_minmax(0,1fr)_20rem] overflow-hidden min-[781px]:grid max-[1180px]:h-auto max-[1180px]:min-h-screen max-[1180px]:grid-cols-[17rem_minmax(0,1fr)] max-[1180px]:overflow-visible max-[1180px]:[&>.editor-workspace-rail-right]:col-span-2 max-[1180px]:[&>.editor-workspace-rail-right]:border-t max-[1180px]:[&>.editor-workspace-rail-right]:border-l-0">
+    <div className="editor-workspace hidden grid-cols-[17.5rem_minmax(0,1fr)_20rem] overflow-hidden min-[781px]:grid min-[1181px]:min-h-0 min-[1181px]:flex-1 max-[1180px]:h-auto max-[1180px]:min-h-screen max-[1180px]:grid-cols-[17rem_minmax(0,1fr)] max-[1180px]:overflow-visible max-[1180px]:[&>.editor-workspace-rail-right]:col-span-2 max-[1180px]:[&>.editor-workspace-rail-right]:border-t max-[1180px]:[&>.editor-workspace-rail-right]:border-l-0">
       <section
         aria-label="Template and style rail"
         className="editor-workspace-rail editor-workspace-rail-left min-h-0 overflow-y-auto border-r border-white/8 bg-black/12 px-5 py-6 backdrop-blur-[2px] [scrollbar-color:rgba(255,255,255,0.28)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/25 [&::-webkit-scrollbar-thumb:hover]:bg-white/40 max-[1180px]:min-h-fit max-[1180px]:overflow-visible max-[780px]:border-b"
@@ -1248,7 +1248,11 @@ export function EditorScreen({ template, instance, importError, dispatch }: Edit
   };
 
   return (
-    <section aria-label="Editor" className="editor-screen dark" data-theme="dark">
+    <section
+      aria-label="Editor"
+      className="editor-screen dark flex min-h-0 flex-1 flex-col"
+      data-theme="dark"
+    >
       {isMobileViewport ? (
         <MobileWorkspace
           activeDataCards={activeDataCards}
