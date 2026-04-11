@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HTML-in-Canvas Spike — Quill Watermark</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: oklch(0.14 0.005 60);
+        --panel: oklch(0.18 0.005 60);
+        --fg: oklch(0.92 0.005 60);
+        --muted: oklch(0.6 0.005 60);
+        --accent: oklch(0.82 0.15 85);
+        --border: oklch(0.26 0.005 60);
+        --font-serif: "Noto Serif", Georgia, serif;
+        --font-sans: "Noto Sans", system-ui, -apple-system, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font-sans);
+        font-size: 14px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 20px 32px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      h1 {
+        font-family: var(--font-serif);
+        font-size: 20px;
+        font-weight: 500;
+        margin: 0;
+        letter-spacing: 0.01em;
+      }
+
+      .caps {
+        padding: 4px 10px;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .caps.ok {
+        background: oklch(0.28 0.08 150);
+        color: oklch(0.9 0.1 150);
+      }
+
+      .caps.no {
+        background: oklch(0.28 0.1 25);
+        color: oklch(0.9 0.1 25);
+      }
+
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        min-height: calc(100vh - 69px);
+      }
+
+      .stage {
+        display: grid;
+        place-items: start center;
+        padding: 40px;
+        background: oklch(0.1 0.005 60);
+        overflow: auto;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      /*
+       * Preview canvas MUST render 1:1 (no CSS max-width/max-height) because
+       * layoutsubtree children are laid out in the canvas element's CSS box
+       * space. If the canvas is CSS-scaled, the children's layout box and the
+       * bitmap pixel space diverge, and drawElementImage rasterizes at the
+       * wrong proportion. Export works because its hidden canvas has no CSS
+       * constraints — the preview must match that invariant.
+       */
+      #previewCanvas {
+        display: block;
+        background: oklch(0.12 0.005 60);
+      }
+
+      aside {
+        border-left: 1px solid var(--border);
+        padding: 28px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+      }
+
+      section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      label {
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      input[type="file"] {
+        font-size: 12px;
+        color: var(--fg);
+      }
+
+      input[type="text"] {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        color: var(--fg);
+        padding: 8px 10px;
+        font: inherit;
+        font-size: 13px;
+      }
+
+      input[type="text"]:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      button {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        color: var(--fg);
+        padding: 10px 14px;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+        text-align: left;
+        letter-spacing: 0.02em;
+      }
+
+      button:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .hint {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .hint code {
+        background: var(--panel);
+        padding: 1px 5px;
+        font-size: 10px;
+      }
+
+      #checklist {
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 11px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+
+      #checklist li.ok {
+        color: oklch(0.85 0.12 150);
+      }
+
+      #checklist li.no {
+        color: oklch(0.8 0.15 25);
+      }
+
+      /* --- Watermark card rendered inside canvas via layoutsubtree --- */
+      .watermark-card {
+        --scale: 1;
+        width: calc(560px * var(--scale));
+        padding: calc(32px * var(--scale)) calc(40px * var(--scale));
+        background: #ffffff;
+        color: #161515;
+        font-family: var(--font-serif);
+        display: flex;
+        flex-direction: column;
+        gap: calc(8px * var(--scale));
+      }
+
+      .watermark-card .title {
+        font-size: calc(22px * var(--scale));
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .watermark-card .meta {
+        font-family: var(--font-sans);
+        font-size: calc(13px * var(--scale));
+        letter-spacing: 0.06em;
+        color: #605c58;
+        display: flex;
+        gap: calc(16px * var(--scale));
+      }
+
+      .watermark-card .accent {
+        margin-top: calc(6px * var(--scale));
+        height: calc(2px * var(--scale));
+        width: calc(48px * var(--scale));
+        background: oklch(0.78 0.18 85);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>HTML-in-Canvas Spike</h1>
+      <span id="capsBadge" class="caps">checking…</span>
+    </header>
+
+    <main>
+      <div class="stage">
+        <canvas id="previewCanvas" layoutsubtree width="900" height="600">
+          <div id="previewCard" class="watermark-card">
+            <div class="title" id="fTitle">Shot on iPhone 15 Pro</div>
+            <div class="meta">
+              <span id="fAperture">f/1.8</span>
+              <span id="fShutter">1/120s</span>
+              <span id="fIso">ISO 200</span>
+              <span id="fLens">24mm</span>
+            </div>
+            <div class="accent"></div>
+          </div>
+        </canvas>
+      </div>
+
+      <aside>
+        <section>
+          <label>Photo</label>
+          <input id="fileInput" type="file" accept="image/*" />
+        </section>
+
+        <section>
+          <label>Title</label>
+          <input id="titleInput" type="text" value="Shot on iPhone 15 Pro" />
+        </section>
+
+        <section>
+          <label>Exposure</label>
+          <input id="apertureInput" type="text" value="f/1.8" />
+          <input id="shutterInput" type="text" value="1/120s" />
+          <input id="isoInput" type="text" value="ISO 200" />
+          <input id="lensInput" type="text" value="24mm" />
+        </section>
+
+        <section>
+          <label>Export</label>
+          <button id="export1x">Download @1x</button>
+          <button id="export2x">Download @2x</button>
+          <button id="export3x">Download @3x</button>
+        </section>
+
+        <section>
+          <label>Checks</label>
+          <ul id="checklist">
+            <li data-key="capability">1. capability detection</li>
+            <li data-key="preview">2. preview pipeline</li>
+            <li data-key="dynamic">3. dynamic update fires paint</li>
+            <li data-key="toBlob">4. toBlob contains DOM content</li>
+            <li data-key="dpr">5. 2x/3x DPR export</li>
+          </ul>
+        </section>
+
+        <p class="hint">
+          Enable <code>chrome://flags/#canvas-draw-element</code> in Chrome Canary and restart. All
+          five checks log to console and update above as they pass.
+        </p>
+      </aside>
+    </main>
+
+    <script type="module" src="./spike.js"></script>
+  </body>
+</html>
