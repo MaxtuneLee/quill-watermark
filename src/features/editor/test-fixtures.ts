@@ -10,6 +10,14 @@ interface EditorScreenFixtureProps {
   dispatch: (action: EditorAction) => Promise<void> | void;
 }
 
+interface LoadedEditorScreenFixtureProps extends EditorScreenFixtureProps {
+  instance: EditorInstance;
+}
+
+interface PendingEditorScreenFixtureProps extends EditorScreenFixtureProps {
+  instance: null;
+}
+
 const loadedInstance: EditorInstance = {
   sourceFile: new File(["binary"], "harbor.jpg", { type: "image/jpeg" }),
   metadata: {
@@ -29,8 +37,8 @@ const loadedInstance: EditorInstance = {
 };
 
 export function makeLoadedEditorProps(
-  overrides: Partial<EditorScreenFixtureProps> = {},
-): EditorScreenFixtureProps {
+  overrides: Partial<LoadedEditorScreenFixtureProps> = {},
+): LoadedEditorScreenFixtureProps {
   return {
     template: templates[0],
     instance: loadedInstance,
@@ -41,8 +49,8 @@ export function makeLoadedEditorProps(
 }
 
 export function makePendingEditorProps(
-  overrides: Partial<EditorScreenFixtureProps> = {},
-): EditorScreenFixtureProps {
+  overrides: Partial<PendingEditorScreenFixtureProps> = {},
+): PendingEditorScreenFixtureProps {
   return {
     template: templates[0],
     instance: null,

@@ -1,9 +1,16 @@
 import { expect, test } from "vite-plus/test";
 import { templates } from "./index";
 
-test("ships at least eight built-in templates across six families", () => {
-  expect(templates.length).toBeGreaterThanOrEqual(8);
-  expect(new Set(templates.map((template) => template.family)).size).toBeGreaterThanOrEqual(6);
+test("ships only the supported info bar and center brand built-in templates", () => {
+  expect(templates.map((template) => template.id)).toEqual([
+    "classic-info-strip",
+    "minimal-info-strip",
+    "centered-device-mark",
+    "centered-brand-meta",
+  ]);
+  expect(new Set(templates.map((template) => template.family))).toEqual(
+    new Set(["Info Bar", "Center Brand"]),
+  );
 });
 
 test("declares schema-backed field groups for every built-in template", () => {

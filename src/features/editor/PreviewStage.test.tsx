@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { Provider, createStore } from "jotai";
 import { beforeEach, expect, test, vi } from "vite-plus/test";
 import * as metadataService from "../../services/metadata/extract-metadata";
@@ -6,7 +6,18 @@ import * as layoutService from "../../template-engine/layout/resolve-layout";
 import { editorDispatchAtom } from "../../app/app-state";
 import { loadImageAsset } from "../../template-engine/render/load-image-asset";
 import { renderCanvas } from "../../template-engine/render/render-canvas";
+import type { TemplateLayoutNode } from "../../template-engine/types";
 import { PreviewStage } from "./PreviewStage";
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 vi.mock("../../services/metadata/extract-metadata", () => ({
   extractMetadata: vi.fn(),
@@ -48,7 +59,563 @@ beforeEach(() => {
   vi.mocked(renderCanvas).mockReset();
 });
 
+function findImageNode(
+  layout: TemplateLayoutNode,
+  predicate: (node: Extract<TemplateLayoutNode, { type: "image" }>) => boolean,
+): Extract<TemplateLayoutNode, { type: "image" }> | undefined {
+  if (layout.type === "image") {
+    return predicate(layout) ? layout : undefined;
+  }
+
+  if (layout.type === "text" || layout.type === "rect") {
+    return undefined;
+  }
+
+  for (const child of layout.children) {
+    const match = findImageNode(child, predicate);
+    if (match) {
+      return match;
+    }
+  }
+
+  return undefined;
+}
+
+function findSceneLogoNode(scene: Parameters<typeof renderCanvas>[1] | undefined) {
+  const imageNodes = (scene?.nodes ?? []).filter((node) => node.type === "image");
+  return imageNodes
+    .slice()
+    .sort(
+      (left, right) =>
+        left.frame.width * left.frame.height - right.frame.width * right.frame.height,
+    )
+    .at(0);
+}
+
 test("renders a preview canvas and repaints when resolved fields change", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: { latitude: 30.7629, longitude: 120.7476 },
+    shotTime: null,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  expect(screen.getByRole("img", { name: /template preview/i })).toBeInTheDocument();
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+  const initialRenderCount = vi.mocked(renderCanvas).mock.calls.length;
+
+  await store.set(editorDispatchAtom, {
+    type: "set-field-override",
+    fieldId: "shootingParameters",
+    value: "35mm • f/2 • ISO 200",
+  });
+
+  await waitFor(() => {
+    expect(vi.mocked(renderCanvas).mock.calls.length).toBeGreaterThan(initialRenderCount);
+  });
+  expect(vi.mocked(loadImageAsset).mock.calls.some(([input]) => input === file)).toBe(true);
+});
+
+test("renders an explicit empty state when no instance is active", () => {
+  const store = createStore();
+
+  void store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  expect(screen.getByRole("heading", { name: /select media/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /open media picker/i })).toBeInTheDocument();
+});
+
+test("renders the empty preview frame without rounded corners and keeps the cover image fully visible", () => {
+  const store = createStore();
+
+  void store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+
+  const { container } = render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  const placeholderFrame = container.querySelector(".editor-preview-placeholder-frame");
+  const placeholderImage = container.querySelector(".editor-preview-placeholder-image");
+
+  expect(placeholderFrame).toHaveClass("rounded-none");
+  expect(placeholderFrame).toHaveClass("max-w-[min(64vw,50rem)]");
+  expect(placeholderImage).toHaveClass("object-contain");
+});
+
+test("preserves text alignment from resolved layout nodes when building render scene", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: { latitude: 30.7629, longitude: 120.7476 },
+    shotTime: null,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "centered-brand-meta",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  const latestScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+  expect(latestScene).toBeTruthy();
+  const textNodes = (latestScene?.nodes ?? []).filter((node) => node.type === "text");
+  expect(textNodes.length).toBeGreaterThan(0);
+  expect(textNodes.every((node) => node.align === "center")).toBe(true);
+});
+
+test("renders centered device mark as a logo-only lockup", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Apple", model: "iPhone 15 Pro" },
+    exposure: {
+      iso: 100,
+      aperture: 1.8,
+      shutterSeconds: 1 / 500,
+      focalLengthMm: 24,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "centered-device-mark",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  const latestScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+  expect(latestScene).toBeTruthy();
+
+  const textNodes = (latestScene?.nodes ?? []).filter((node) => node.type === "text");
+  const imageNodes = (latestScene?.nodes ?? []).filter((node) => node.type === "image");
+  const logoNode = findSceneLogoNode(latestScene);
+
+  expect(textNodes).toHaveLength(0);
+  expect(imageNodes.length).toBeGreaterThan(1);
+  expect(logoNode).toBeTruthy();
+});
+
+test("renders centered brand meta as a centered logo with a single brand line below it", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Apple", model: "iPhone 15 Pro" },
+    exposure: {
+      iso: 100,
+      aperture: 1.8,
+      shutterSeconds: 1 / 500,
+      focalLengthMm: 24,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "centered-brand-meta",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  const latestScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+  expect(latestScene).toBeTruthy();
+
+  const textNodes = (latestScene?.nodes ?? []).filter((node) => node.type === "text");
+  const logoNode = findSceneLogoNode(latestScene);
+  const brandNode = textNodes.find((node) => node.value === "QUILL STUDIO");
+
+  expect(textNodes).toHaveLength(1);
+  expect(logoNode).toBeTruthy();
+  expect(brandNode).toBeTruthy();
+
+  if (!logoNode || !brandNode) {
+    throw new Error("Expected centered logo and brand line in centered brand meta scene.");
+  }
+
+  expect(brandNode.frame.y).toBeGreaterThan(logoNode.frame.y + logoNode.frame.height);
+});
+
+test("applies style color controls to canvas, text, and logo rendering", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Nikon", model: "Z 6_2" },
+    exposure: {
+      iso: 125,
+      aperture: 3.5,
+      shutterSeconds: 1 / 1600,
+      focalLengthMm: 50,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "canvasBackground", value: "#123456" },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "textColor", value: "#fedcba" },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "logoColor", value: "#00ff00" },
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  const latestScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+  expect(latestScene?.canvas.background).toBe("#123456");
+  const textNodes = (latestScene?.nodes ?? []).filter((node) => node.type === "text");
+  expect(textNodes.length).toBeGreaterThan(0);
+  expect(textNodes.every((node) => node.color === "#fedcba")).toBe(true);
+  const logoAssetCall = vi.mocked(loadImageAsset).mock.calls.find(([input]) => {
+    return typeof input === "string" && input.includes("#00ff00");
+  });
+  expect(logoAssetCall).toBeTruthy();
+});
+
+test("uses canvas background color for the minimal info strip footer background", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Apple", model: "iPhone 14 Pro" },
+    exposure: {
+      iso: 32,
+      aperture: 2.8,
+      shutterSeconds: 1 / 630,
+      focalLengthMm: 9,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "minimal-info-strip",
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "canvasBackground", value: "#123456" },
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  const latestScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+  expect(latestScene?.canvas.background).toBe("#123456");
+
+  const footerBackgroundNode = (latestScene?.nodes ?? []).find(
+    (node) => node.type === "rect" && node.frame.height > 0,
+  );
+  expect(footerBackgroundNode).toBeTruthy();
+
+  if (!footerBackgroundNode || footerBackgroundNode.type !== "rect") {
+    throw new Error("Expected a footer background rect in minimal info strip scene.");
+  }
+
+  expect(footerBackgroundNode.fill).toBe("#123456");
+});
+
+test("keeps wide camera brand wordmarks from being stretched into square boxes", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Canon", model: "R5" },
+    exposure: {
+      iso: 100,
+      aperture: 4,
+      shutterSeconds: 1 / 250,
+      focalLengthMm: 35,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+  vi.mocked(loadImageAsset).mockImplementation(async (input) => {
+    if (input instanceof File) {
+      return {
+        source: {} as CanvasImageSource,
+        width: 1600,
+        height: 900,
+        dispose: vi.fn(),
+      };
+    }
+
+    return {
+      source: {} as CanvasImageSource,
+      width: 320,
+      height: 64,
+      dispose: vi.fn(),
+    };
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "centered-device-mark",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  expect(
+    vi
+      .mocked(loadImageAsset)
+      .mock.calls.some(
+        ([input]) => typeof input === "string" && input.includes('viewBox="0 0 1000.04 209.153"'),
+      ),
+  ).toBe(true);
+
+  const latestScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+  const imageNodes = (latestScene?.nodes ?? []).filter((node) => node.type === "image");
+  const logoNode = imageNodes
+    .slice()
+    .sort(
+      (left, right) =>
+        left.frame.width * left.frame.height - right.frame.width * right.frame.height,
+    )
+    .at(0);
+
+  expect(logoNode?.type).toBe("image");
+  if (!logoNode || logoNode.type !== "image") {
+    throw new Error("Expected logo node in centered device mark scene.");
+  }
+
+  expect(logoNode.frame.width).toBeGreaterThan(logoNode.frame.height * 2);
+});
+
+test("scales camera brand logos with the logo size control while keeping them vertically centered", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Canon", model: "R5" },
+    exposure: {
+      iso: 100,
+      aperture: 4,
+      shutterSeconds: 1 / 250,
+      focalLengthMm: 35,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+  vi.mocked(loadImageAsset).mockImplementation(async (input) => {
+    if (input instanceof File) {
+      return {
+        source: {} as CanvasImageSource,
+        width: 1600,
+        height: 900,
+        dispose: vi.fn(),
+      };
+    }
+
+    return {
+      source: {} as CanvasImageSource,
+      width: 320,
+      height: 64,
+      dispose: vi.fn(),
+    };
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "centered-device-mark",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  const initialScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+  const initialLogoNode = findSceneLogoNode(initialScene);
+  expect(initialLogoNode?.type).toBe("image");
+  if (!initialLogoNode || initialLogoNode.type !== "image") {
+    throw new Error("Expected initial logo node.");
+  }
+  expect(initialLogoNode.frame.width).toBeCloseTo(110, 5);
+  expect(initialLogoNode.frame.height).toBeCloseTo(52, 5);
+
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "logoScale", value: 2 },
+  });
+
+  await waitFor(() => {
+    const nextScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+    const nextLogoNode = findSceneLogoNode(nextScene);
+    expect(nextLogoNode?.type).toBe("image");
+    if (!nextLogoNode || nextLogoNode.type !== "image") {
+      throw new Error("Expected scaled logo node.");
+    }
+    expect(nextLogoNode.frame.width).toBeGreaterThan(initialLogoNode.frame.width);
+    expect(nextLogoNode.frame.height).toBeGreaterThan(initialLogoNode.frame.height);
+    expect(nextLogoNode.frame.y).toBeLessThan(initialLogoNode.frame.y);
+  });
+});
+
+test("uses sans-serif by default and updates text font family when typography theme changes", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Nikon", model: "Z 6_2" },
+    exposure: {
+      iso: 125,
+      aperture: 3.5,
+      shutterSeconds: 1 / 1600,
+      focalLengthMm: 50,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  const defaultScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+  const defaultTextNode = (defaultScene?.nodes ?? []).find((node) => node.type === "text");
+  expect(defaultTextNode?.type).toBe("text");
+  if (!defaultTextNode || defaultTextNode.type !== "text") {
+    throw new Error("Expected a text node in default scene.");
+  }
+  expect(defaultTextNode.font).toContain("sans-serif");
+
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "typographyTheme", value: "mono" },
+  });
+
+  await waitFor(() => {
+    const monoScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+    const monoTextNode = (monoScene?.nodes ?? []).find((node) => node.type === "text");
+    expect(monoTextNode?.type).toBe("text");
+    if (!monoTextNode || monoTextNode.type !== "text") {
+      throw new Error("Expected a text node in mono scene.");
+    }
+    expect(monoTextNode.font).toContain("monospace");
+  });
+});
+
+test("includes schema-backed metadata fields in the classic info strip render scene", async () => {
   const store = createStore();
   const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
   vi.mocked(metadataService.extractMetadata).mockResolvedValue({
@@ -75,36 +642,36 @@ test("renders a preview canvas and repaints when resolved fields change", async 
     </Provider>,
   );
 
-  expect(screen.getByRole("img", { name: /template preview/i })).toBeInTheDocument();
   await waitFor(() => {
-    expect(renderCanvas).toHaveBeenCalledTimes(1);
+    expect(renderCanvas).toHaveBeenCalled();
   });
 
-  await store.set(editorDispatchAtom, {
-    type: "set-field-override",
-    fieldId: "shootingParameters",
-    value: "35mm • f/2 • ISO 200",
+  const latestScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+  expect(latestScene).toBeTruthy();
+  const textValues = (latestScene?.nodes ?? [])
+    .filter((node) => node.type === "text")
+    .map((node) => node.value);
+  const imageNodes = (latestScene?.nodes ?? []).filter((node) => node.type === "image");
+  const imageNodeCount = imageNodes.length;
+  const metadataNode = (latestScene?.nodes ?? []).find((node) => {
+    return node.type === "text" && node.value.includes("28mm");
   });
+  const logoNode = findSceneLogoNode(latestScene);
 
-  await waitFor(() => {
-    expect(renderCanvas).toHaveBeenCalledTimes(2);
-  });
-  expect(loadImageAsset).toHaveBeenCalledTimes(1);
+  expect(textValues).toContain("28mm • f/1.7 • 1/125s • ISO 400");
+  expect(textValues).not.toContain("Q2");
+  expect(imageNodeCount).toBeGreaterThan(1);
+  expect(metadataNode).toBeTruthy();
+  expect(logoNode).toBeTruthy();
+
+  if (!metadataNode || !logoNode) {
+    throw new Error("Expected logo and metadata nodes in classic info strip scene.");
+  }
+
+  expect(logoNode.frame.x).toBeGreaterThan(metadataNode.frame.x + metadataNode.frame.width);
 });
 
-test("renders an explicit empty state when no instance is active", () => {
-  const store = createStore();
-
-  render(
-    <Provider store={store}>
-      <PreviewStage />
-    </Provider>,
-  );
-
-  expect(screen.getByText(/import an image to preview this template/i)).toBeInTheDocument();
-});
-
-test("preserves text alignment from resolved layout nodes when building render scene", async () => {
+test("keeps minimal info strip metadata below the photo content", async () => {
   const store = createStore();
   const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
   vi.mocked(metadataService.extractMetadata).mockResolvedValue({
@@ -121,7 +688,7 @@ test("preserves text alignment from resolved layout nodes when building render s
 
   await store.set(editorDispatchAtom, {
     type: "select-template",
-    templateId: "centered-brand-meta",
+    templateId: "minimal-info-strip",
   });
   await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
 
@@ -137,9 +704,42 @@ test("preserves text alignment from resolved layout nodes when building render s
 
   const latestScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
   expect(latestScene).toBeTruthy();
-  const textNodes = (latestScene?.nodes ?? []).filter((node) => node.type === "text");
-  expect(textNodes.length).toBeGreaterThan(0);
-  expect(textNodes.every((node) => node.align === "center")).toBe(true);
+
+  const photoNode = latestScene?.nodes.find(
+    (node) => node.type === "image" && node.frame.width > 100,
+  );
+  const cameraNode = latestScene?.nodes.find(
+    (node) => node.type === "text" && node.value.includes("Q2"),
+  );
+  const logoNode = findSceneLogoNode(latestScene);
+  const footerBackgroundNode = latestScene?.nodes.find((node) => node.type === "rect");
+
+  expect(photoNode).toBeTruthy();
+  expect(cameraNode).toBeTruthy();
+  expect(logoNode).toBeTruthy();
+  expect(footerBackgroundNode).toBeTruthy();
+
+  if (!photoNode || !cameraNode || !logoNode || !footerBackgroundNode) {
+    throw new Error(
+      "Expected photo, footer background, camera text, and logo nodes in minimal info strip scene.",
+    );
+  }
+
+  expect(photoNode.frame.x).toBe(0);
+  expect(photoNode.frame.y).toBe(0);
+  expect(footerBackgroundNode.frame.y).toBe(photoNode.frame.y + photoNode.frame.height);
+  expect(cameraNode.frame.y).toBeGreaterThanOrEqual(footerBackgroundNode.frame.y);
+  expect(cameraNode.frame.y + cameraNode.frame.height).toBeLessThanOrEqual(
+    footerBackgroundNode.frame.y + footerBackgroundNode.frame.height,
+  );
+  expect(logoNode.frame.x).toBeGreaterThan(cameraNode.frame.x + cameraNode.frame.width);
+  expect(logoNode.frame.x + logoNode.frame.width).toBeLessThanOrEqual(
+    footerBackgroundNode.frame.x + footerBackgroundNode.frame.width - 22,
+  );
+  expect(logoNode.frame.y).toBeGreaterThanOrEqual(footerBackgroundNode.frame.y);
+  expect(logoNode.frame.y + logoNode.frame.height).toBeLessThanOrEqual(
+    footerBackgroundNode.frame.y + footerBackgroundNode.frame.height,
+  );
 });
 
 test("injects decoded photo intrinsic dimensions into resolveLayout input", async () => {
@@ -185,18 +785,15 @@ test("injects decoded photo intrinsic dimensions into resolveLayout input", asyn
   if (resolveLayoutInput === undefined) {
     throw new Error("resolveLayout input was not captured.");
   }
-  if (resolveLayoutInput.layout.type !== "stack") {
-    throw new Error("Expected a stack root layout.");
-  }
-  const imageNode = resolveLayoutInput.layout.children.find((child) => child.type === "image");
+  const imageNode = findImageNode(resolveLayoutInput.layout, (node) => node.binding === "photo");
   expect(imageNode).toBeDefined();
-  if (imageNode === undefined || imageNode.type !== "image") {
-    throw new Error("Expected an image node in root children.");
+  if (imageNode === undefined) {
+    throw new Error("Expected a photo image node in the layout tree.");
   }
   expect(imageNode.intrinsicSize).toEqual({ width: 900, height: 1600 });
 });
 
-test("consumes editor control state when resolving preview layout", async () => {
+test("uses preset-synced control state when output ratio changes before preview layout resolves", async () => {
   const store = createStore();
   const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
   vi.mocked(metadataService.extractMetadata).mockResolvedValue({
@@ -219,7 +816,19 @@ test("consumes editor control state when resolving preview layout", async () => 
   await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
   await store.set(editorDispatchAtom, {
     type: "editor/set-control",
-    payload: { id: "canvasPadding", value: 64 },
+    payload: { id: "canvasPaddingTop", value: 64 },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "canvasPaddingRight", value: 52 },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "canvasPaddingBottom", value: 20 },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "canvasPaddingLeft", value: 36 },
   });
   await store.set(editorDispatchAtom, {
     type: "editor/set-control",
@@ -246,16 +855,396 @@ test("consumes editor control state when resolving preview layout", async () => 
     throw new Error("resolveLayout input was not captured.");
   }
 
-  expect(resolveLayoutInput.canvas.padding).toBe(64);
+  expect(resolveLayoutInput.canvas.padding).toEqual({
+    top: 24,
+    right: 24,
+    bottom: 0,
+    left: 24,
+  });
   expect(resolveLayoutInput.canvas.width).toBe(1200);
   expect(resolveLayoutInput.canvas.height).toBe(1200);
-  if (resolveLayoutInput.layout.type !== "stack") {
-    throw new Error("Expected a stack root layout.");
-  }
-  const imageNode = resolveLayoutInput.layout.children.find((child) => child.type === "image");
+  const imageNode = findImageNode(resolveLayoutInput.layout, (node) => node.binding === "photo");
   expect(imageNode).toBeDefined();
-  if (imageNode === undefined || imageNode.type !== "image") {
-    throw new Error("Expected an image node in root children.");
+  if (imageNode === undefined) {
+    throw new Error("Expected a photo image node in the layout tree.");
   }
-  expect(imageNode.fit).toBe("contain");
+  expect(imageNode.fit).toBe("cover");
+});
+
+test("treats non-original output ratio as preset selection and applies preset overrides within preview sizing", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+  const resolveLayoutSpy = vi.spyOn(layoutService, "resolveLayout");
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "outputRatio", value: "4:5" },
+  });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(resolveLayoutSpy).toHaveBeenCalled();
+  });
+
+  const resolveLayoutInput = resolveLayoutSpy.mock.calls.at(-1)?.[0];
+  expect(resolveLayoutInput).toBeTruthy();
+  if (resolveLayoutInput === undefined) {
+    throw new Error("Expected captured resolveLayout input.");
+  }
+
+  expect(resolveLayoutInput.canvas.width).toBe(960);
+  expect(resolveLayoutInput.canvas.height).toBe(1200);
+  const imageNode = findImageNode(resolveLayoutInput.layout, (node) => node.binding === "photo");
+  expect(imageNode).toBeDefined();
+  if (imageNode === undefined) {
+    throw new Error("Expected a photo image node in the layout tree.");
+  }
+  expect(imageNode.width).toBe("fill");
+});
+
+test("renders preview scene without finish controls", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  const latestScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+  expect(latestScene?.canvas.cornerRadius).toBeUndefined();
+  expect(latestScene?.canvas.surfaceStyle).toBeUndefined();
+  expect(latestScene?.canvas.surfaceInset).toBeUndefined();
+});
+
+test("renders a compact preview toolbar", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  const { container } = render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  const toolbar = container.querySelector(".editor-preview-toolbar");
+  const zoomGroup = container.querySelector(".editor-preview-zoom");
+  expect(toolbar?.className).toContain("gap-2");
+  expect(toolbar?.className).toContain("rounded-xl");
+  expect(toolbar?.className).toContain("px-3");
+  expect(toolbar?.className).toContain("py-2");
+  expect(toolbar?.className).toContain("left-1/2");
+  expect(toolbar?.className).toContain("-translate-x-1/2");
+  expect(toolbar?.className).toContain("w-fit");
+  expect(zoomGroup?.className).toContain("min-w-40");
+  expect(within(toolbar as HTMLElement).getByText(/^zoom$/i)).toHaveClass("text-xs");
+  expect(within(toolbar as HTMLElement).getByText(/^100%$/i)).toHaveClass("text-xs");
+});
+
+test("fit mode keeps the preview centered at 70 percent of the available viewport", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  const sourceContext = {
+    fillRect: vi.fn(),
+    drawImage: vi.fn(),
+    fillText: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    rect: vi.fn(),
+    clip: vi.fn(),
+  } as unknown as CanvasRenderingContext2D;
+  const previewDrawImage = vi.fn();
+  const previewContext = {
+    clearRect: vi.fn(),
+    drawImage: previewDrawImage,
+    scale: vi.fn(),
+    setTransform: vi.fn(),
+  } as unknown as CanvasRenderingContext2D;
+
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
+    function getContext(this: HTMLCanvasElement) {
+      return this.isConnected ? previewContext : sourceContext;
+    },
+  );
+  vi.spyOn(HTMLDivElement.prototype, "getBoundingClientRect").mockReturnValue({
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    bottom: 720,
+    right: 960,
+    width: 960,
+    height: 720,
+    toJSON: () => ({}),
+  });
+  globalThis.ResizeObserver = class ResizeObserver {
+    private readonly callback: ResizeObserverCallback;
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+    }
+
+    disconnect() {}
+
+    observe() {
+      this.callback([], this);
+    }
+
+    unobserve() {}
+  } as typeof ResizeObserver;
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(previewDrawImage).toHaveBeenCalled();
+  });
+
+  const latestCall = previewDrawImage.mock.calls.at(-1);
+  expect(latestCall).toBeDefined();
+  expect(latestCall?.[1]).toBeCloseTo(144, 5);
+  expect(latestCall?.[2]).toBeCloseTo(171, 5);
+  expect(latestCall?.[3]).toBeCloseTo(672, 5);
+  expect(latestCall?.[4]).toBeCloseTo(378, 5);
+});
+
+test("re-renders brand text when a schema-backed template control changes", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "centered-brand-meta",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalled();
+  });
+
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-template-control",
+    payload: { id: "brandLine", value: "Desk Proof" },
+  });
+
+  await waitFor(() => {
+    const latestScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+    const textValues = latestScene?.nodes
+      .filter((node) => node.type === "text")
+      .map((node) => node.value);
+
+    expect(textValues).toContain("Desk Proof");
+  });
+});
+
+test("keeps the previous preview frame visible while a settings-triggered repaint is still pending", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  const previewClearRect = vi.fn();
+  const previewDrawImage = vi.fn();
+  vi.mocked(metadataService.extractMetadata).mockResolvedValue({
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: { latitude: null, longitude: null },
+    shotTime: null,
+  });
+
+  const previewContext = {
+    setTransform: vi.fn(),
+    clearRect: previewClearRect,
+    scale: vi.fn(),
+    drawImage: previewDrawImage,
+  } as unknown as CanvasRenderingContext2D;
+  const sourceContext = {
+    clearRect: vi.fn(),
+    drawImage: vi.fn(),
+    fillRect: vi.fn(),
+    fillText: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    rect: vi.fn(),
+    clip: vi.fn(),
+  } as unknown as CanvasRenderingContext2D;
+
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
+    function getContext(this: HTMLCanvasElement) {
+      return this.isConnected ? previewContext : sourceContext;
+    },
+  );
+  vi.spyOn(HTMLDivElement.prototype, "getBoundingClientRect").mockReturnValue({
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    bottom: 720,
+    right: 960,
+    width: 960,
+    height: 720,
+    toJSON: () => ({}),
+  });
+  const resizeObserverCallback: { current: ResizeObserverCallback | null } = { current: null };
+  globalThis.ResizeObserver = class ResizeObserver {
+    constructor(callback: ResizeObserverCallback) {
+      resizeObserverCallback.current = callback;
+    }
+
+    disconnect() {}
+
+    observe() {
+      resizeObserverCallback.current?.([], this);
+    }
+
+    unobserve() {}
+  } as typeof ResizeObserver;
+
+  const pendingRepaint = createDeferred<void>();
+  vi.mocked(renderCanvas)
+    .mockResolvedValueOnce(undefined)
+    .mockImplementationOnce(() => pendingRepaint.promise)
+    .mockResolvedValue(undefined);
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+
+  render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalledTimes(1);
+    expect(previewDrawImage).toHaveBeenCalled();
+  });
+
+  const clearCountBeforeControlChange = previewClearRect.mock.calls.length;
+
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "textColor", value: "#ffffff" },
+  });
+
+  await waitFor(() => {
+    expect(renderCanvas).toHaveBeenCalledTimes(2);
+  });
+
+  expect(previewClearRect).toHaveBeenCalledTimes(clearCountBeforeControlChange);
+
+  pendingRepaint.resolve();
+
+  await waitFor(() => {
+    expect(previewDrawImage.mock.calls.length).toBeGreaterThan(1);
+  });
 });

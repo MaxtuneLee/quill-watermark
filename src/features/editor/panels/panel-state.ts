@@ -1,8 +1,10 @@
-import type { WatermarkTemplate } from "../../../template-engine/types";
-import type { TemplateLayoutNode } from "../../../template-engine/types";
+import type {
+  EdgeInsets,
+  TemplateLayoutNode,
+  WatermarkTemplate,
+} from "../../../template-engine/types";
 
 export type OutputRatio = "original" | "1:1" | "4:5" | "3:2" | "16:9" | "9:16";
-export type SurfaceStyle = "none" | "border" | "shadow" | "border-shadow";
 export type TypographyTheme = "signature" | "editorial" | "mono";
 export type BrandPosition = "bottom-left" | "bottom-right" | "center";
 export type ExportFormat = "png" | "jpeg" | "webp";
@@ -11,9 +13,14 @@ export type ExportMultiplier = 1 | 2 | 3;
 export interface StylePanelValues {
   outputRatio: OutputRatio;
   imageFit: "cover" | "contain";
-  canvasPadding: number;
-  cornerRadius: number;
-  surfaceStyle: SurfaceStyle;
+  canvasPaddingTop: number;
+  canvasPaddingRight: number;
+  canvasPaddingBottom: number;
+  canvasPaddingLeft: number;
+  canvasBackground: string;
+  textColor: string;
+  logoColor: string;
+  logoScale: number;
   typographyTheme: TypographyTheme;
   brandPosition: BrandPosition;
 }
@@ -28,9 +35,14 @@ export type StyleControlValue = StylePanelValues[StyleControlId];
 export const styleControlIds = [
   "outputRatio",
   "imageFit",
-  "canvasPadding",
-  "cornerRadius",
-  "surfaceStyle",
+  "canvasPaddingTop",
+  "canvasPaddingRight",
+  "canvasPaddingBottom",
+  "canvasPaddingLeft",
+  "canvasBackground",
+  "textColor",
+  "logoColor",
+  "logoScale",
   "typographyTheme",
   "brandPosition",
 ] as const satisfies readonly StyleControlId[];
@@ -44,7 +56,7 @@ function findPhotoNode(layout: TemplateLayoutNode): TemplateLayoutNode | null {
     return layout;
   }
 
-  if (layout.type === "text" || layout.type === "image") {
+  if (layout.type === "text" || layout.type === "image" || layout.type === "rect") {
     return null;
   }
 
@@ -58,10 +70,28 @@ function findPhotoNode(layout: TemplateLayoutNode): TemplateLayoutNode | null {
   return null;
 }
 
-function resolveCanvasPadding(template: WatermarkTemplate): number {
+function resolveCanvasPadding(template: WatermarkTemplate): EdgeInsets {
   const { padding } = template.canvas;
 
-  return typeof padding === "number" ? padding : Math.max(padding.x, padding.y);
+  if (typeof padding === "number") {
+    return {
+      top: padding,
+      right: padding,
+      bottom: padding,
+      left: padding,
+    };
+  }
+
+  if ("x" in padding) {
+    return {
+      top: padding.y,
+      right: padding.x,
+      bottom: padding.y,
+      left: padding.x,
+    };
+  }
+
+  return padding;
 }
 
 function resolveImageFit(template: WatermarkTemplate): "cover" | "contain" {
@@ -70,13 +100,84 @@ function resolveImageFit(template: WatermarkTemplate): "cover" | "contain" {
   return photoNode?.type === "image" ? (photoNode.fit ?? "cover") : "cover";
 }
 
+function hexToRgb(hexColor: string): { r: number; g: number; b: number } | null {
+  const normalized = hexColor.trim();
+  const shortMatch = /^#([\da-f]{3})$/i.exec(normalized);
+  if (shortMatch) {
+    const digits = shortMatch[1];
+    return {
+      r: Number.parseInt(`${digits[0]}${digits[0]}`, 16),
+      g: Number.parseInt(`${digits[1]}${digits[1]}`, 16),
+      b: Number.parseInt(`${digits[2]}${digits[2]}`, 16),
+    };
+  }
+
+  const fullMatch = /^#([\da-f]{6})$/i.exec(normalized);
+  if (!fullMatch) {
+    return null;
+  }
+
+  const digits = fullMatch[1];
+  return {
+    r: Number.parseInt(digits.slice(0, 2), 16),
+    g: Number.parseInt(digits.slice(2, 4), 16),
+    b: Number.parseInt(digits.slice(4, 6), 16),
+  };
+}
+
+function pickReadableColor(background: string): string {
+  const rgb = hexToRgb(background);
+  if (rgb === null) {
+    return "#ffffff";
+  }
+
+  const perceivedLuma = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+  return perceivedLuma > 150 ? "#111111" : "#ffffff";
+}
+
+function findFirstNodeColor(
+  layout: TemplateLayoutNode,
+  predicate: (node: TemplateLayoutNode) => boolean,
+): string | null {
+  if (predicate(layout) && "color" in layout && typeof layout.color === "string") {
+    return layout.color;
+  }
+
+  if (layout.type === "text" || layout.type === "image" || layout.type === "rect") {
+    return null;
+  }
+
+  for (const child of layout.children) {
+    const color = findFirstNodeColor(child, predicate);
+    if (color !== null) {
+      return color;
+    }
+  }
+
+  return null;
+}
+
 export function createInitialControlValues(template: WatermarkTemplate): StylePanelValues {
+  const padding = resolveCanvasPadding(template);
+  const fallbackColor = pickReadableColor(template.canvas.background);
+  const textColor =
+    findFirstNodeColor(template.layout, (node) => node.type === "text") ?? fallbackColor;
+  const logoColor =
+    findFirstNodeColor(
+      template.layout,
+      (node) => node.type === "image" && node.binding !== "photo",
+    ) ?? fallbackColor;
   return {
     outputRatio: "original",
     imageFit: resolveImageFit(template),
-    canvasPadding: resolveCanvasPadding(template),
-    cornerRadius: 18,
-    surfaceStyle: template.family === "Card Frame" ? "border-shadow" : "shadow",
+    canvasPaddingTop: padding.top,
+    canvasPaddingRight: padding.right,
+    canvasPaddingBottom: padding.bottom,
+    canvasPaddingLeft: padding.left,
+    canvasBackground: template.canvas.background,
+    textColor,
+    logoColor,
+    logoScale: 1,
     typographyTheme: template.family === "Minimal White Space" ? "editorial" : "signature",
     brandPosition: template.family === "Center Brand" ? "center" : "bottom-left",
   };
@@ -107,18 +208,8 @@ export const brandPositionOptions: ReadonlyArray<{
   value: BrandPosition;
 }> = [
   { label: "Left", value: "bottom-left" },
-  { label: "Right", value: "bottom-right" },
   { label: "Center", value: "center" },
-];
-
-export const surfaceStyleOptions: ReadonlyArray<{
-  label: string;
-  value: SurfaceStyle;
-}> = [
-  { label: "None", value: "none" },
-  { label: "Border", value: "border" },
-  { label: "Shadow", value: "shadow" },
-  { label: "Border + Shadow", value: "border-shadow" },
+  { label: "Right", value: "bottom-right" },
 ];
 
 export const imageFillOptions: ReadonlyArray<{

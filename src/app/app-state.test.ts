@@ -58,11 +58,12 @@ test("successful file import stores the file with normalized metadata and enters
     metadata,
   });
   expect(store.get(resolvedFieldsAtom).cameraModel.value).toBe("Q2");
-  expect(store.get(dataCardsAtom).find((card) => card.id === "camera-model")).toMatchObject({
+  expect(store.get(dataCardsAtom).find((card) => card.id === "shooting-parameters")).toMatchObject({
     enabled: true,
     mode: "auto",
-    previewValue: "Q2",
+    previewValue: "28mm • f/1.7 • 1/125s • ISO 400",
   });
+  expect(store.get(dataCardsAtom).find((card) => card.id === "camera-model")).toBeUndefined();
 });
 
 test("failed file import keeps pending-image state and stores explicit import error", async () => {
@@ -85,7 +86,7 @@ test("failed file import keeps pending-image state and stores explicit import er
   );
 });
 
-test("manual overrides recompute resolved fields and data cards", async () => {
+test("manual overrides recompute resolved fields even when the template does not expose that card", async () => {
   const store = createStore();
   const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
   const extractMetadataMock = vi.mocked(metadataService.extractMetadata);
@@ -119,10 +120,7 @@ test("manual overrides recompute resolved fields and data cards", async () => {
     value: "Contax T3",
     mode: "manual",
   });
-  expect(store.get(dataCardsAtom).find((card) => card.id === "camera-model")).toMatchObject({
-    mode: "manual",
-    previewValue: "Contax T3",
-  });
+  expect(store.get(dataCardsAtom).find((card) => card.id === "camera-model")).toBeUndefined();
 });
 
 test("user source values populate schema-backed user paths independently of field overrides", async () => {
@@ -152,6 +150,20 @@ test("user source values populate schema-backed user paths independently of fiel
   expect(store.get(resolvedFieldsAtom).authorLine).toMatchObject({
     value: "By Override",
     mode: "manual",
+  });
+});
+
+test("template text control defaults hydrate matching schema-backed fields", async () => {
+  const store = createStore();
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "centered-brand-meta",
+  });
+
+  expect(store.get(resolvedFieldsAtom).brandLine).toMatchObject({
+    value: "QUILL STUDIO",
+    mode: "auto",
   });
 });
 
@@ -213,7 +225,52 @@ test("metadata changes recompute resolved fields and data cards", async () => {
   });
 });
 
-test("built-in shot-time field resolves from imported metadata for templates that request it", async () => {
+test("switching templates keeps the current imported image and only resets template-scoped state", async () => {
+  const store = createStore();
+  const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
+  const extractMetadataMock = vi.mocked(metadataService.extractMetadata);
+  const metadata: NormalizedMetadata = {
+    camera: { make: "Leica", model: "Q2" },
+    exposure: {
+      iso: 400,
+      aperture: 1.7,
+      shutterSeconds: 1 / 125,
+      focalLengthMm: 28,
+    },
+    location: {
+      latitude: 22.302711,
+      longitude: 114.177216,
+    },
+    shotTime: "2026-04-09T02:15:00.000Z",
+  };
+  extractMetadataMock.mockResolvedValue(metadata);
+
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+  await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
+  await store.set(editorDispatchAtom, {
+    type: "set-field-override",
+    fieldId: "cameraModel",
+    value: "Manual Camera",
+  });
+  await store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "centered-brand-meta",
+  });
+
+  expect(store.get(selectedTemplateIdAtom)).toBe("centered-brand-meta");
+  expect(store.get(appScreenAtom)).toBe("editor");
+  expect(store.get(editorInstanceAtom)).toEqual({
+    sourceFile: file,
+    metadata,
+  });
+  expect(store.get(editorImportErrorAtom)).toBe(null);
+  expect(store.get(resolvedFieldsAtom).cameraModel.value).toBe("Q2");
+});
+
+test("built-in shot-time field can resolve even when no current template layout renders that card", async () => {
   const store = createStore();
   const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
   const extractMetadataMock = vi.mocked(metadataService.extractMetadata);
@@ -234,7 +291,7 @@ test("built-in shot-time field resolves from imported metadata for templates tha
 
   await store.set(editorDispatchAtom, {
     type: "select-template",
-    templateId: "quiet-white-margin",
+    templateId: "classic-info-strip",
   });
   await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
 
@@ -242,10 +299,7 @@ test("built-in shot-time field resolves from imported metadata for templates tha
     mode: "auto",
   });
   expect(store.get(resolvedFieldsAtom).shotTime.value).not.toBeNull();
-  expect(store.get(dataCardsAtom).find((card) => card.id === "shot-time")).toMatchObject({
-    enabled: true,
-    mode: "auto",
-  });
+  expect(store.get(dataCardsAtom).find((card) => card.id === "shot-time")).toBeUndefined();
 });
 
 test("style control actions persist rail values in app state across later session updates", async () => {
@@ -273,7 +327,11 @@ test("style control actions persist rail values in app state across later sessio
   });
   await store.set(editorDispatchAtom, {
     type: "editor/set-control",
-    payload: { id: "canvasPadding", value: 64 },
+    payload: { id: "canvasPaddingTop", value: 64 },
+  });
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "canvasPaddingBottom", value: 12 },
   });
   await store.set(editorDispatchAtom, {
     type: "editor/set-control",
@@ -299,7 +357,8 @@ test("style control actions persist rail values in app state across later sessio
   });
 
   expect(store.get(editorControlsAtom)).toMatchObject({
-    canvasPadding: 64,
+    canvasPaddingTop: 64,
+    canvasPaddingBottom: 12,
     imageFit: "contain",
   });
   expect(store.get(editorControlsAtom)).not.toHaveProperty("metadataOrder");
@@ -388,7 +447,7 @@ test("required cards cannot be disabled through the reducer and stay visible in 
 
   await store.set(editorDispatchAtom, {
     type: "select-template",
-    templateId: "classic-info-strip",
+    templateId: "minimal-info-strip",
   });
   await store.set(editorDispatchAtom, {
     type: "set-field-override",
@@ -439,8 +498,8 @@ test("manual overrides and optional card visibility remain app-owned across late
   await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
   await store.set(editorDispatchAtom, {
     type: "set-field-override",
-    fieldId: "authorLine",
-    value: "By Harbor Studio",
+    fieldId: "brandLine",
+    value: "Harbor Studio",
   });
   await store.set(editorDispatchAtom, {
     type: "editor/set-card-enabled",
@@ -464,14 +523,14 @@ test("manual overrides and optional card visibility remain app-owned across late
     },
   });
 
-  expect(store.get(resolvedFieldsAtom).authorLine).toMatchObject({
+  expect(store.get(resolvedFieldsAtom).brandLine).toMatchObject({
     mode: "manual",
-    value: "By Harbor Studio",
+    value: "Harbor Studio",
   });
   expect(store.get(dataCardsAtom).find((card) => card.id === "brand-mark")).toMatchObject({
     enabled: false,
     requiredByTemplate: false,
-    mode: "auto",
+    mode: "manual",
   });
   expect(store.get(editorPreviewResolvedFieldsAtom).brandLine.value).toBe(null);
 });

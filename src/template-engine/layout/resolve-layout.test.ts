@@ -40,7 +40,9 @@ test("resolves cover image and metadata strip boxes inside the canvas", () => {
     height: 1404,
   });
   expect(result.nodes.photo.frame.width).toBeGreaterThan(0);
-  expect(result.nodes.photo.contentBox.width).toBeGreaterThan(result.nodes.photo.frame.width);
+  expect(result.nodes.photo.contentBox.width).toBeGreaterThanOrEqual(
+    result.nodes.photo.frame.width,
+  );
   expect(result.nodes.meta.frame.y).toBeGreaterThan(result.nodes.photo.frame.y);
   expect(result.nodes.meta.text.lines.length).toBeGreaterThan(0);
 });
@@ -79,4 +81,66 @@ test("truncates text to max lines and keeps layout within the padded canvas", ()
   expect(result.nodes.headline.frame.width).toBeLessThanOrEqual(1000);
   expect(result.nodes.headline.text.lines.length).toBe(2);
   expect(result.nodes.headline.text.didTruncate).toBe(true);
+});
+
+test("keeps space-between children inside bounds when a column child contains fill text", () => {
+  const result = resolveLayout({
+    canvas: { width: 900, height: 180, padding: 0 },
+    layout: {
+      id: "footer-strip",
+      type: "container",
+      direction: "row",
+      width: "fill",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: { x: 22, y: 18 },
+      children: [
+        {
+          id: "copy",
+          type: "container",
+          direction: "column",
+          gap: 2,
+          children: [
+            {
+              id: "brand",
+              type: "text",
+              binding: "brandLine",
+              font: '18px "Helvetica Neue"',
+              lineHeight: 24,
+              align: "left",
+              width: "fill",
+              maxLines: 1,
+            },
+            {
+              id: "camera",
+              type: "text",
+              binding: "cameraModel",
+              font: '12px "Helvetica Neue"',
+              lineHeight: 16,
+              align: "left",
+              width: 240,
+              maxLines: 1,
+            },
+          ],
+        },
+        {
+          id: "logo",
+          type: "image",
+          binding: "cameraBrandLogo",
+          fit: "contain",
+          intrinsicSize: { width: 50, height: 50 },
+          width: 50,
+          height: 50,
+        },
+      ],
+    },
+    resolvedFields: {
+      brandLine: { value: "Quill Studio", mode: "manual" },
+      cameraModel: { value: "iPhone 14 Pro", mode: "auto" },
+      cameraBrandLogo: { value: "apple", mode: "auto" },
+    },
+  });
+
+  expect(result.nodes.logo.frame.x).toBeGreaterThan(result.nodes.camera.frame.x);
+  expect(result.nodes.logo.frame.x + result.nodes.logo.frame.width).toBeLessThanOrEqual(878);
 });

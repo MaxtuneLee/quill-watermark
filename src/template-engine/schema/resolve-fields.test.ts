@@ -63,6 +63,50 @@ test("prefers manual overrides over auto values", () => {
   expect(resolved.cameraModel.mode).toBe("manual");
 });
 
+test("resolves single-brace field expressions inside manual overrides", () => {
+  const resolved = resolveFields({
+    schema: {
+      fields: {
+        shootingParameters: {
+          kind: "text",
+          source: "derived",
+          path: "shootingParameters",
+          editable: false,
+          placeholder: "Settings unavailable",
+        },
+        brandLine: {
+          kind: "text",
+          source: "brand",
+          path: "line",
+          editable: true,
+          placeholder: "Shot on Quill",
+        },
+      },
+    },
+    sources: {
+      user: {},
+      exif: {},
+      gps: {},
+      derived: {
+        shootingParameters: "28mm • f/1.7 • 1/125s • ISO 400",
+      },
+      afilmory: {},
+      brand: {
+        line: "quill studio",
+      },
+    },
+    overrides: {
+      brandLine: "Shot on {shootingParameters}",
+      shootingParameters: "{shootingParameters}",
+    },
+  });
+
+  expect(resolved.brandLine.value).toBe("Shot on 28mm • f/1.7 • 1/125s • ISO 400");
+  expect(resolved.brandLine.mode).toBe("manual");
+  expect(resolved.shootingParameters.value).toBe("28mm • f/1.7 • 1/125s • ISO 400");
+  expect(resolved.shootingParameters.mode).toBe("manual");
+});
+
 test("interpolates placeholders and applies formatter chains", () => {
   const resolved = resolveFields({
     schema: {

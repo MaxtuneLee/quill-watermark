@@ -4,7 +4,7 @@
 
 **Goal:** Build the v1 template-first photo watermark web app with a reusable constraint-based template engine, categorized template library, panel-driven desktop/mobile editor, EXIF ingestion, local export, and social aspect-ratio presets.
 
-**Architecture:** Migrate the starter app to a React + TypeScript single-page workspace with a clear split between UI features, template-engine domain logic, and browser services. Keep the template engine declarative and framework-agnostic: schema resolution, valibot-backed schema validation, preset resolution, layout resolution, and canvas rendering run as pure modules, while React + Jotai orchestrate state, panels, and preview. Build the local design system on top of Base UI headless primitives so desktop and mobile controls share accessibility and interaction behavior without constraining the visual language. Treat metadata extraction and reverse geocoding as service layers so the local-first flow stays intact when enhancements are unavailable, and isolate multiline text layout behind a dedicated Pretext adapter.
+**Architecture:** Migrate the starter app to a React + TypeScript single-page workspace with a clear split between UI features, template-engine domain logic, and browser services. Keep the template engine declarative and framework-agnostic: schema resolution, valibot-backed schema validation, preset resolution, layout resolution, and canvas rendering run as pure modules, while React + Jotai orchestrate state, panels, and preview. Build the local design system around Tailwind utilities and shadcn-wrapped primitives so desktop and mobile controls share accessibility and interaction behavior without relying on standalone feature CSS files. Treat metadata extraction and reverse geocoding as service layers so the local-first flow stays intact when enhancements are unavailable, and isolate multiline text layout behind a dedicated Pretext adapter.
 
 **Tech Stack:** Vite+, React, React DOM, Jotai, Valibot, `@base-ui/react`, `@vitejs/plugin-react-oxc`, `vite-plus/test`, Testing Library, jsdom, `exifr`, `simple-icons`, `@chenglou/pretext`, Oxc formatter/linter via `vp fmt` / `vp lint` / `vp check`, `lucide-animated` icons added locally via the shadcn registry workflow, optional reverse-geocoding via fetch + env-configured endpoint.
 
@@ -37,10 +37,6 @@
   Jotai atoms, derived atoms, and write-only action helpers for template selection, imported image state, and editor instance state.
 - Create: `src/app/providers.tsx`
   Top-level Jotai provider wrapper and future cross-cutting providers.
-- Create: `src/styles/tokens.css`
-  Color, spacing, typography, radius, and surface tokens.
-- Create: `src/styles/base.css`
-  Global reset, layout primitives, and app-level styling.
 - Create: `src/components/ui/button.tsx`
   Base button primitive styled for the Quill workspace.
 - Create: `src/components/ui/tabs.tsx`
@@ -95,8 +91,6 @@
 
 - Create: `src/features/template-library/TemplateLibraryScreen.tsx`
   Categorized template browsing screen.
-- Create: `src/features/template-library/template-library.css`
-  Template library styles.
 - Create: `src/features/editor/EditorScreen.tsx`
   Desktop/mobile editor entry shell.
 - Create: `src/features/editor/PreviewStage.tsx`
@@ -111,6 +105,13 @@
   Export format, multiplier, and share/download actions.
 - Create: `src/features/editor/panels/panel-state.ts`
   Panel-specific selectors and action helpers.
+
+### Styling Direction
+
+- Use Tailwind utility classes directly in React components for layout, spacing, typography, and visual treatment.
+- Use shadcn component wrappers under `src/components/ui/*` as the styling boundary for reusable controls.
+- Avoid introducing feature-specific standalone CSS files such as `template-library.css` or `editor.css` unless a browser-level reset or third-party compatibility issue makes that unavoidable.
+- If shared tokens are needed, prefer Tailwind theme extension or shadcn variant composition over custom CSS token files.
 
 ### Services
 
@@ -164,8 +165,6 @@
 - Create: `src/app/App.tsx`
 - Create: `src/app/app-state.ts`
 - Create: `src/app/providers.tsx`
-- Create: `src/styles/tokens.css`
-- Create: `src/styles/base.css`
 - Create: `src/components/ui/button.tsx`
 - Create: `src/components/ui/tabs.tsx`
 - Create: `src/components/ui/select.tsx`
@@ -222,8 +221,6 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./app/App";
 import { AppProviders } from "./app/providers";
-import "./styles/tokens.css";
-import "./styles/base.css";
 
 ReactDOM.createRoot(document.getElementById("app")!).render(
   <React.StrictMode>

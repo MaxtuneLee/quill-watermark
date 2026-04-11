@@ -4,20 +4,25 @@ import {
   editorDataCardsAtom,
   editorControlsAtom,
   editorExportOptionsAtom,
-  fieldOverridesAtom,
   editorResolvedFieldsAtom,
+  fieldOverridesAtom,
   type EditorAction,
   type EditorInstance,
 } from "../../app/app-state";
-import { Button } from "../../components/ui";
-import { ArrowLeftIcon, DownloadIcon, SparklesIcon } from "../../icons/ui-icons";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui";
+import { getCameraBrandName } from "../../icons/camera-brand-icons";
 import { exportImage } from "../../services/export/export-image";
 import { shareImage } from "../../services/export/share-image";
-import type { WatermarkTemplate } from "../../template-engine/types";
-import type { ResolvedFieldMap, TemplateDataCard } from "../../template-engine/types";
-import { ImageImporter } from "./ImageImporter";
+import { resolvePresetLayout } from "../../template-engine/presets/resolve-preset";
+import { loadImageAsset } from "../../template-engine/render/load-image-asset";
+import type {
+  ResolvedFieldMap,
+  TemplateDataCard,
+  WatermarkTemplate,
+} from "../../template-engine/types";
+import { templates } from "../../template-engine/templates";
+import { TemplateLibraryScreen } from "../template-library/TemplateLibraryScreen";
 import { PreviewStage, type PreviewRenderState, type PreviewStageHandle } from "./PreviewStage";
-import "./editor.css";
 import { DataPanel } from "./panels/DataPanel";
 import { ExportPanel } from "./panels/ExportPanel";
 import type {
@@ -26,7 +31,14 @@ import type {
   ExportPanelValues,
   StylePanelValues,
 } from "./panels/panel-state";
+import {
+  PREVIEW_LONG_EDGE,
+  renderEditorCanvas,
+  resolveAspectRatio,
+  resolveCanvasSize,
+} from "./render-editor-canvas";
 import { StylePanel } from "./panels/StylePanel";
+import { toast } from "sonner";
 
 interface EditorScreenProps {
   template: WatermarkTemplate;
@@ -35,161 +47,37 @@ interface EditorScreenProps {
   dispatch: (action: EditorAction) => Promise<void> | void;
 }
 
-function TemplateSummary({ template }: { template: WatermarkTemplate }) {
-  return (
-    <section aria-label="Template summary" className="editor-template-summary">
-      <p className="editor-shell-kicker">Template locked</p>
-      <h2>{template.name}</h2>
-      <p>{template.description}</p>
-      <dl>
-        <dt>Family</dt>
-        <dd>{template.family}</dd>
-        <dt>Aspect ratios</dt>
-        <dd>Original, {template.aspectSupport.join(", ")}</dd>
-      </dl>
-    </section>
-  );
-}
-
-function previewStatusLabel(renderState: PreviewRenderState) {
-  switch (renderState) {
-    case "ready":
-      return "Preview ready";
-    case "loading":
-      return "Rendering preview";
-    case "error":
-      return "Render issue";
-    default:
-      return "Awaiting photo";
-  }
-}
-
-function TemplateStatus({ template }: { template: WatermarkTemplate }) {
-  return (
-    <div className="editor-template-status">
-      <p className="editor-shell-kicker">Template locked</p>
-      <p className="editor-template-status-name">{template.name}</p>
-      <p className="editor-template-status-meta">
-        {template.family} · Original, {template.aspectSupport.join(", ")}
-      </p>
-    </div>
-  );
-}
-
-function EditorHeader({
-  exportFormat,
-  hasLoadedImage,
-  onBackToLibrary,
-  onExport,
-  onReplacePhoto,
-  previewRenderState,
-  template,
-}: {
-  exportFormat: ExportFormat;
-  hasLoadedImage: boolean;
-  onBackToLibrary: () => void;
-  onExport: () => void;
-  onReplacePhoto: () => void;
-  previewRenderState: PreviewRenderState;
-  template: WatermarkTemplate;
-}) {
-  return (
-    <header className="editor-shell-header">
-      <div className="editor-shell-brand">
-        <span className="editor-shell-brand-mark" aria-hidden="true">
-          <SparklesIcon className="editor-shell-brand-icon" />
-        </span>
-        <div>
-          <p className="editor-shell-kicker">Quill Studio</p>
-          <h1>Desktop workspace</h1>
-        </div>
-      </div>
-
-      <div className="editor-shell-status-group">
-        <TemplateStatus template={template} />
-        <div className="editor-shell-status-pill" data-state={previewRenderState}>
-          {previewStatusLabel(previewRenderState)}
-        </div>
-      </div>
-
-      <div className="editor-shell-actions">
-        <Button size="compact" variant="workspace-ghost" onClick={onBackToLibrary}>
-          <ArrowLeftIcon className="editor-action-icon" />
-          Back to library
-        </Button>
-        <Button
-          disabled={!hasLoadedImage}
-          size="compact"
-          variant="workspace-secondary"
-          onClick={onReplacePhoto}
-        >
-          Replace photo
-        </Button>
-        <Button
-          disabled={!hasLoadedImage || previewRenderState !== "ready"}
-          size="compact"
-          variant="workspace-primary"
-          onClick={onExport}
-        >
-          <DownloadIcon className="editor-action-icon" />
-          Export {exportFormat.toUpperCase()}
-        </Button>
-      </div>
-    </header>
-  );
-}
-
-function PendingWorkspace({
-  dispatch,
-  importError,
-  template,
-}: {
-  dispatch: (action: EditorAction) => Promise<void> | void;
-  importError: string | null;
-  template: WatermarkTemplate;
-}) {
-  return (
-    <div className="editor-empty-shell">
-      <section aria-label="Preview workspace" className="editor-empty-stage" role="region">
-        <div className="editor-stage-shell">
-          <div className="editor-stage-shell-chrome">
-            <p>Preview workspace</p>
-            <span>Load a photo to enter the production stage</span>
-          </div>
-          <div className="editor-empty-stage-content">
-            <ImageImporter dispatch={dispatch} importError={importError} />
-          </div>
-        </div>
-      </section>
-      <TemplateSummary template={template} />
-    </div>
-  );
-}
-
-function LoadedWorkspace({
+function Workspace({
   activeDataCards,
-  activeResolvedFields,
   controlValues,
+  dispatch,
   exportStatusMessage,
   exportValues,
   fieldOverrides,
+  inferredCameraBrand,
+  resolvedFields,
   handleCardEnabledChange,
   handleControlChange,
   handleExport,
   handleExportOptionChange,
   handleOverrideChange,
   handleShare,
+  instance,
+  importError,
   previewRenderState,
   previewStageRef,
   setPreviewRenderState,
   template,
+  handleTemplateSelect,
 }: {
   activeDataCards: TemplateDataCard[];
-  activeResolvedFields: ResolvedFieldMap;
   controlValues: StylePanelValues;
+  dispatch: (action: EditorAction) => Promise<void> | void;
   exportStatusMessage: string | null;
   exportValues: ExportPanelValues;
   fieldOverrides: Record<string, string>;
+  inferredCameraBrand: ReturnType<typeof getCameraBrandName>;
+  resolvedFields: ResolvedFieldMap;
   handleCardEnabledChange: (cardId: string, enabled: boolean) => void;
   handleControlChange: (
     id: keyof StylePanelValues,
@@ -202,52 +90,75 @@ function LoadedWorkspace({
   ) => void;
   handleOverrideChange: (fieldId: string, value: string) => void;
   handleShare: () => Promise<void>;
+  instance: EditorInstance | null;
+  importError: string | null;
   previewRenderState: PreviewRenderState;
   previewStageRef: RefObject<PreviewStageHandle | null>;
   setPreviewRenderState: (state: PreviewRenderState) => void;
   template: WatermarkTemplate;
+  handleTemplateSelect: (templateId: string) => void;
 }) {
+  const [leftRailTab, setLeftRailTab] = useState<"presets" | "details">("presets");
+
   return (
-    <div className="editor-workspace">
+    <div className="editor-workspace grid h-screen grid-cols-[17.5rem_minmax(0,1fr)_20rem] overflow-hidden max-[1180px]:h-auto max-[1180px]:min-h-screen max-[1180px]:grid-cols-[17rem_minmax(0,1fr)] max-[1180px]:overflow-visible max-[1180px]:[&>.editor-workspace-rail-right]:col-span-2 max-[1180px]:[&>.editor-workspace-rail-right]:border-t max-[1180px]:[&>.editor-workspace-rail-right]:border-l-0 max-[780px]:grid-cols-1 max-[780px]:[&>.editor-workspace-rail-left]:border-r-0">
       <section
-        aria-label="Style rail"
-        className="editor-workspace-rail editor-workspace-rail-left"
+        aria-label="Template and style rail"
+        className="editor-workspace-rail editor-workspace-rail-left min-h-0 overflow-y-auto border-r border-white/8 bg-black/12 px-5 py-6 backdrop-blur-[2px] [scrollbar-color:rgba(255,255,255,0.28)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/25 [&::-webkit-scrollbar-thumb:hover]:bg-white/40 max-[1180px]:min-h-fit max-[1180px]:overflow-visible max-[780px]:border-b"
         role="region"
       >
-        <div className="editor-rail-heading">
-          <p className="editor-shell-kicker">Style</p>
-          <p>Controls grouped for ratio, framing, and brand treatment.</p>
-        </div>
-        <StylePanel
-          template={template}
-          values={controlValues}
-          onControlChange={handleControlChange}
-        />
+        <Tabs
+          value={leftRailTab}
+          onValueChange={(value) => {
+            setLeftRailTab((value as "presets" | "details") ?? "presets");
+          }}
+          className="gap-4"
+        >
+          <TabsList aria-label="Editor left rail" className="w-full" variant="line">
+            <TabsTrigger value="presets">Preset Templates</TabsTrigger>
+            <TabsTrigger value="details">Detailed Settings</TabsTrigger>
+          </TabsList>
+          <TabsContent value="presets" className="mt-0">
+            <TemplateLibraryScreen
+              templates={templates}
+              selectedTemplateId={template.id}
+              layout="sidebar"
+              onSelect={(templateId) => {
+                handleTemplateSelect(templateId);
+                setLeftRailTab("details");
+              }}
+            />
+          </TabsContent>
+          <TabsContent value="details" className="mt-0">
+            <StylePanel
+              template={template}
+              values={controlValues}
+              onControlChange={handleControlChange}
+            />
+          </TabsContent>
+        </Tabs>
       </section>
 
-      <section aria-label="Preview workspace" className="editor-workspace-stage" role="region">
-        <div className="editor-stage-shell">
-          <div className="editor-stage-shell-chrome">
-            <p>Preview workspace</p>
-            <span>{previewStatusLabel(previewRenderState)}</span>
-          </div>
-          <div className="editor-stage-shell-body">
-            <PreviewStage ref={previewStageRef} onRenderStateChange={setPreviewRenderState} />
-          </div>
-        </div>
+      <section
+        aria-label="Preview workspace"
+        className="editor-workspace-stage relative flex min-h-0 items-stretch justify-center overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(255,236,173,0.1)_1px,transparent_0),radial-gradient(circle_at_top,rgba(255,214,63,0.09),transparent_28%),linear-gradient(180deg,rgba(31,27,18,0.96),rgba(13,11,7,0.995))] bg-[size:18px_18px,auto,auto] max-[1180px]:min-h-[calc(100vh-18rem)] max-[780px]:min-h-[calc(100vh-6rem)]"
+        role="region"
+      >
+        <PreviewStage
+          ref={previewStageRef}
+          dispatch={dispatch}
+          importError={importError}
+          onRenderStateChange={setPreviewRenderState}
+        />
       </section>
 
       <section
         aria-label="Export and data rail"
-        className="editor-workspace-rail editor-workspace-rail-right"
+        className="editor-workspace-rail editor-workspace-rail-right grid min-h-0 content-start gap-8 overflow-y-auto border-l border-white/8 bg-black/12 px-5 py-6 backdrop-blur-[2px] [scrollbar-color:rgba(255,255,255,0.28)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/25 [&::-webkit-scrollbar-thumb:hover]:bg-white/40 max-[1180px]:min-h-fit max-[1180px]:overflow-visible"
         role="region"
       >
-        <div className="editor-rail-heading">
-          <p className="editor-shell-kicker">Output</p>
-          <p>Export settings first, then inspect the active metadata cards below.</p>
-        </div>
         <ExportPanel
-          disabled={previewRenderState !== "ready"}
+          disabled={instance === null || previewRenderState !== "ready"}
           values={exportValues}
           statusMessage={exportStatusMessage}
           onFormatChange={(value) => {
@@ -260,10 +171,12 @@ function LoadedWorkspace({
           onShare={handleShare}
         />
         <DataPanel
+          hasImage={instance !== null}
           dataCards={activeDataCards}
-          resolvedFields={activeResolvedFields}
           cardEnabled={Object.fromEntries(activeDataCards.map((card) => [card.id, card.enabled]))}
+          inferredCameraBrand={inferredCameraBrand}
           overrides={fieldOverrides}
+          resolvedFields={resolvedFields}
           onCardEnabledChange={handleCardEnabledChange}
           onOverrideChange={handleOverrideChange}
         />
@@ -294,18 +207,8 @@ function qualityFromFormat(format: ExportFormat): number | undefined {
   }
 }
 
-function createScaledCanvas(sourceCanvas: HTMLCanvasElement, multiplier: ExportMultiplier) {
-  const scaledCanvas = document.createElement("canvas");
-  scaledCanvas.width = Math.max(1, Math.round(sourceCanvas.width * multiplier));
-  scaledCanvas.height = Math.max(1, Math.round(sourceCanvas.height * multiplier));
-
-  const context = scaledCanvas.getContext("2d");
-  if (context === null) {
-    throw new Error("Scaled export canvas could not be created.");
-  }
-
-  context.drawImage(sourceCanvas, 0, 0, scaledCanvas.width, scaledCanvas.height);
-  return scaledCanvas;
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }
 
 function downloadExport(blob: Blob, fileName: string) {
@@ -325,9 +228,9 @@ export function EditorScreen({ template, instance, importError, dispatch }: Edit
   const controlValues = useAtomValue(editorControlsAtom);
   const exportValues = useAtomValue(editorExportOptionsAtom);
   const fieldOverrides = useAtomValue(fieldOverridesAtom);
-  const atomResolvedFields = useAtomValue(editorResolvedFieldsAtom);
+  const resolvedFields = useAtomValue(editorResolvedFieldsAtom);
   const activeDataCards = atomDataCards;
-  const activeResolvedFields = atomResolvedFields;
+  const inferredCameraBrand = getCameraBrandName(instance?.metadata.camera.make);
   const previewStageRef = useRef<PreviewStageHandle | null>(null);
   const [previewRenderState, setPreviewRenderState] = useState<PreviewRenderState>("idle");
 
@@ -367,18 +270,41 @@ export function EditorScreen({ template, instance, importError, dispatch }: Edit
   };
 
   const buildExportedImage = async () => {
-    const previewCanvas = previewStageRef.current?.getCanvas() ?? null;
-    if (previewRenderState !== "ready" || previewCanvas === null) {
+    if (previewRenderState !== "ready" || instance === null) {
       throw new Error("Preview canvas is not ready yet.");
     }
 
-    const scaledCanvas = createScaledCanvas(previewCanvas, exportValues.multiplier);
-    return exportImage({
-      canvas: scaledCanvas,
-      fileBaseName: instance?.sourceFile.name.replace(/\.[^.]+$/, "") ?? "quill-watermark",
-      mimeType: mimeTypeFromFormat(exportValues.format),
-      quality: qualityFromFormat(exportValues.format),
-    });
+    const { preset } = resolvePresetLayout(template, controlValues.outputRatio);
+    const decodedAsset = await loadImageAsset(instance.sourceFile);
+
+    try {
+      const exportCanvas = document.createElement("canvas");
+      const exportSize = resolveCanvasSize(
+        decodedAsset.width,
+        decodedAsset.height,
+        resolveAspectRatio(preset.canvas),
+        PREVIEW_LONG_EDGE * exportValues.multiplier,
+      );
+
+      await renderEditorCanvas({
+        canvas: exportCanvas,
+        cameraMake: instance.metadata.camera.make,
+        controls: controlValues,
+        decodedAsset,
+        outputSize: exportSize,
+        resolvedFields,
+        template,
+      });
+
+      return exportImage({
+        canvas: exportCanvas,
+        fileBaseName: instance.sourceFile.name.replace(/\.[^.]+$/, "") ?? "quill-watermark",
+        mimeType: mimeTypeFromFormat(exportValues.format),
+        quality: qualityFromFormat(exportValues.format),
+      });
+    } finally {
+      decodedAsset.dispose();
+    }
   };
 
   const [exportStatusMessage, setExportStatusMessage] = useState<string | null>(null);
@@ -399,63 +325,55 @@ export function EditorScreen({ template, instance, importError, dispatch }: Edit
     try {
       const exportedImage = await buildExportedImage();
       const result = await shareImage(exportedImage);
-      setExportStatusMessage(
-        result.method === "share"
-          ? "Share sheet opened with the rendered image."
-          : "Download started because sharing was unavailable.",
-      );
+      if (result.method === "share") {
+        toast.success("Image shared successfully.");
+      } else {
+        toast.info("Sharing is not supported. Download started instead.");
+      }
     } catch (error) {
+      if (isAbortError(error)) {
+        return;
+      }
       setExportStatusMessage(error instanceof Error ? error.message : "Unable to share preview.");
     }
   };
 
-  const handleBackToLibrary = () => {
-    void dispatch({
-      type: "return-to-library",
-    });
-  };
+  const handleTemplateSelect = (templateId: string) => {
+    if (templateId === template.id) {
+      return;
+    }
 
-  const handleReplacePhoto = () => {
     void dispatch({
-      type: "clear-image",
+      type: "select-template",
+      templateId,
     });
   };
 
   return (
-    <section aria-label="Editor" className="editor-screen">
-      <EditorHeader
-        exportFormat={exportValues.format}
-        hasLoadedImage={instance !== null}
-        onBackToLibrary={handleBackToLibrary}
-        onExport={() => {
-          void handleExport();
-        }}
-        onReplacePhoto={handleReplacePhoto}
+    <section aria-label="Editor" className="editor-screen dark" data-theme="dark">
+      <Workspace
+        activeDataCards={activeDataCards}
+        controlValues={controlValues}
+        dispatch={dispatch}
+        exportStatusMessage={exportStatusMessage}
+        exportValues={exportValues}
+        fieldOverrides={fieldOverrides}
+        inferredCameraBrand={inferredCameraBrand}
+        resolvedFields={resolvedFields}
+        handleCardEnabledChange={handleCardEnabledChange}
+        handleControlChange={handleControlChange}
+        handleExport={handleExport}
+        handleExportOptionChange={handleExportOptionChange}
+        handleOverrideChange={handleOverrideChange}
+        handleShare={handleShare}
+        importError={importError}
+        instance={instance}
         previewRenderState={previewRenderState}
+        previewStageRef={previewStageRef}
+        setPreviewRenderState={setPreviewRenderState}
         template={template}
+        handleTemplateSelect={handleTemplateSelect}
       />
-      {instance === null ? (
-        <PendingWorkspace dispatch={dispatch} importError={importError} template={template} />
-      ) : (
-        <LoadedWorkspace
-          activeDataCards={activeDataCards}
-          activeResolvedFields={activeResolvedFields}
-          controlValues={controlValues}
-          exportStatusMessage={exportStatusMessage}
-          exportValues={exportValues}
-          fieldOverrides={fieldOverrides}
-          handleCardEnabledChange={handleCardEnabledChange}
-          handleControlChange={handleControlChange}
-          handleExport={handleExport}
-          handleExportOptionChange={handleExportOptionChange}
-          handleOverrideChange={handleOverrideChange}
-          handleShare={handleShare}
-          previewRenderState={previewRenderState}
-          previewStageRef={previewStageRef}
-          setPreviewRenderState={setPreviewRenderState}
-          template={template}
-        />
-      )}
     </section>
   );
 }

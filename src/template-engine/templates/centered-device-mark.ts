@@ -1,10 +1,9 @@
 import type { WatermarkTemplate } from "../types";
 import {
+  createBoundImageNode,
   createTemplateCanvas,
-  createTemplateLayout,
   createTemplatePresets,
-  defaultTemplateSchema,
-  pickTemplateFieldGroups,
+  extendTemplateSchema,
 } from "./shared";
 
 export const centeredDeviceMarkTemplate: WatermarkTemplate = {
@@ -16,22 +15,41 @@ export const centeredDeviceMarkTemplate: WatermarkTemplate = {
   aspectSupport: ["1:1", "4:5", "16:9"],
   tags: ["logo-first", "centered"],
   canvas: createTemplateCanvas(20),
-  layout: createTemplateLayout("center-mark", "center"),
+  layout: {
+    id: "root",
+    type: "overlay",
+    align: "center",
+    justify: "center",
+    children: [
+      {
+        id: "photo",
+        type: "image",
+        binding: "photo",
+        fit: "cover",
+        intrinsicSize: { width: 1600, height: 900 },
+        width: "fill",
+        height: "fill",
+        flexGrow: 1,
+      },
+      createBoundImageNode("camera-brand-logo", "cameraBrandLogo", "contain", 104, 104),
+    ],
+  },
   presets: createTemplatePresets(["1:1", "4:5", "16:9"]),
-  schema: defaultTemplateSchema,
-  fieldGroups: pickTemplateFieldGroups(["camera-model", "shooting-parameters", "author"]),
-  controls: [
-    { id: "brandLine", label: "Brand line", type: "text", defaultValue: "Shot on QuillCam X" },
-    {
-      id: "fontStyle",
-      label: "Font style",
-      type: "select",
-      defaultValue: "mono",
-      options: [
-        { label: "Mono", value: "mono" },
-        { label: "Serif", value: "serif" },
-      ],
+  schema: extendTemplateSchema({
+    cameraBrandLogo: {
+      kind: "image",
+      source: "derived",
+      path: "cameraBrandLogo",
+      editable: false,
     },
-    { id: "showDivider", label: "Show divider", type: "toggle", defaultValue: false },
+  }),
+  fieldGroups: [
+    {
+      id: "brand-mark",
+      title: "Brand Mark",
+      bindings: ["cameraBrandLogo"],
+      requiredByTemplate: true,
+    },
   ],
+  controls: [],
 };

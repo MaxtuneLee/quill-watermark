@@ -1,9 +1,10 @@
 import type { WatermarkTemplate } from "../types";
 import {
   createTemplateCanvas,
-  createTemplateLayout,
   createTemplatePresets,
-  defaultTemplateSchema,
+  createImageNode,
+  createTextNode,
+  extendTemplateSchema,
   pickTemplateFieldGroups,
 } from "./shared";
 
@@ -16,9 +17,27 @@ export const quietWhiteMarginTemplate: WatermarkTemplate = {
   aspectSupport: ["1:1", "4:5", "3:2"],
   tags: ["minimal", "margin"],
   canvas: createTemplateCanvas(26, "#faf7f2"),
-  layout: createTemplateLayout("margin-bottom", "left"),
+  layout: {
+    id: "root",
+    type: "stack",
+    direction: "column",
+    gap: 14,
+    children: [
+      createImageNode("photo", "contain"),
+      createTextNode("brand", "brandLine", '20px "Helvetica Neue"', "left", 1),
+      createTextNode("meta", "metaLine", '18px "Helvetica Neue"', "left", 1),
+    ],
+  },
   presets: createTemplatePresets(["1:1", "4:5", "3:2"]),
-  schema: defaultTemplateSchema,
+  schema: extendTemplateSchema({
+    metaLine: {
+      kind: "text",
+      source: "brand",
+      path: "journalIssue",
+      editable: true,
+      placeholder: "Issue 018",
+    },
+  }),
   fieldGroups: pickTemplateFieldGroups(["shot-time", "location", "author", "brand-mark"]),
   controls: [
     { id: "brandLine", label: "Brand line", type: "text", defaultValue: "Quill Journal" },

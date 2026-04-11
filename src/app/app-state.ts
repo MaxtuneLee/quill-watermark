@@ -19,7 +19,9 @@ import { resolveFields } from "../template-engine/schema/resolve-fields";
 import { templates } from "../template-engine/templates";
 import type {
   ResolvedFieldMap,
+  TemplateLayoutNode,
   TemplateDataCard,
+  TemplateFieldDefinition,
   TemplateFieldSources,
   WatermarkTemplate,
 } from "../template-engine/types";
@@ -32,11 +34,14 @@ export interface EditorInstance {
   metadata: NormalizedMetadata;
 }
 
+type TemplateControlPrimitive = string | number | boolean;
+
 interface TemplateScopedSession {
   templateId: string;
   userSourceValues: Record<string, string>;
   fieldOverrides: Record<string, string>;
   controls: StylePanelValues;
+  templateControlValues: Record<string, TemplateControlPrimitive>;
   cardEnabled: Record<string, boolean>;
   exportOptions: ExportPanelValues;
 }
@@ -73,6 +78,10 @@ export type EditorAction =
       type: "clear-image";
     }
   | {
+      type: "set-import-error";
+      message: string | null;
+    }
+  | {
       type: "set-field-override";
       fieldId: string;
       value: string;
@@ -91,6 +100,13 @@ export type EditorAction =
       payload: {
         id: StyleControlId;
         value: StyleControlValue;
+      };
+    }
+  | {
+      type: "editor/set-template-control";
+      payload: {
+        id: string;
+        value: TemplateControlPrimitive;
       };
     }
   | {
@@ -136,6 +152,7 @@ function buildPendingImageSession(
   userSourceValues: Record<string, string>,
   fieldOverrides: Record<string, string>,
   controls: StylePanelValues,
+  templateControlValues: Record<string, TemplateControlPrimitive>,
   cardEnabled: Record<string, boolean>,
   exportOptions: ExportPanelValues,
 ): EditorPendingImageSession {
@@ -146,6 +163,7 @@ function buildPendingImageSession(
     userSourceValues,
     fieldOverrides,
     controls,
+    templateControlValues,
     cardEnabled,
     exportOptions,
   };
@@ -157,6 +175,7 @@ function buildEditorSession(
   userSourceValues: Record<string, string>,
   fieldOverrides: Record<string, string>,
   controls: StylePanelValues,
+  templateControlValues: Record<string, TemplateControlPrimitive>,
   cardEnabled: Record<string, boolean>,
   exportOptions: ExportPanelValues,
 ): EditorSession {
@@ -167,14 +186,22 @@ function buildEditorSession(
     userSourceValues,
     fieldOverrides,
     controls,
+    templateControlValues,
     cardEnabled,
     exportOptions,
   };
 }
 
+function createInitialTemplateControlValues(
+  template: WatermarkTemplate,
+): Record<string, TemplateControlPrimitive> {
+  return Object.fromEntries(template.controls.map((control) => [control.id, control.defaultValue]));
+}
+
 function createDefaultTemplateScopedState(template: WatermarkTemplate) {
   return {
     controls: createInitialControlValues(template),
+    templateControlValues: createInitialTemplateControlValues(template),
     cardEnabled: createInitialCardEnabled(template),
     exportOptions: createInitialExportValues(),
   };
@@ -189,6 +216,7 @@ function updateTemplateScopedSession(
     userSourceValues: overrides.userSourceValues ?? session.userSourceValues,
     fieldOverrides: overrides.fieldOverrides ?? session.fieldOverrides,
     controls: overrides.controls ?? session.controls,
+    templateControlValues: overrides.templateControlValues ?? session.templateControlValues,
     cardEnabled: overrides.cardEnabled ?? session.cardEnabled,
     exportOptions: overrides.exportOptions ?? session.exportOptions,
   };
@@ -200,6 +228,7 @@ function updateTemplateScopedSession(
       nextScopedState.userSourceValues,
       nextScopedState.fieldOverrides,
       nextScopedState.controls,
+      nextScopedState.templateControlValues,
       nextScopedState.cardEnabled,
       nextScopedState.exportOptions,
     );
@@ -211,6 +240,7 @@ function updateTemplateScopedSession(
     nextScopedState.userSourceValues,
     nextScopedState.fieldOverrides,
     nextScopedState.controls,
+    nextScopedState.templateControlValues,
     nextScopedState.cardEnabled,
     nextScopedState.exportOptions,
   );
@@ -297,11 +327,43 @@ function formatShootingParameters(metadata: NormalizedMetadata): string | null {
   );
 }
 
+function assignSourceValue(
+  target: Record<string, unknown>,
+  definition: TemplateFieldDefinition,
+  value: string,
+): void {
+  if (!definition.path) {
+    return;
+  }
+
+  const segments = definition.path.split(".");
+  let current = target;
+
+  for (const segment of segments.slice(0, -1)) {
+    const next = current[segment];
+    if (typeof next === "object" && next !== null) {
+      current = next as Record<string, unknown>;
+      continue;
+    }
+
+    const branch: Record<string, unknown> = {};
+    current[segment] = branch;
+    current = branch;
+  }
+
+  const lastSegment = segments.at(-1);
+  if (lastSegment) {
+    current[lastSegment] = value;
+  }
+}
+
 function buildFieldSources(
   metadata: NormalizedMetadata,
   userSourceValues: Record<string, string>,
+  template: WatermarkTemplate,
+  templateControlValues: Record<string, TemplateControlPrimitive>,
 ): TemplateFieldSources {
-  return {
+  const sources: TemplateFieldSources = {
     exif: {
       camera: {
         make: metadata.camera.make,
@@ -336,6 +398,22 @@ function buildFieldSources(
       journalName: "Quill Journal",
     },
   };
+
+  for (const control of template.controls) {
+    if (control.type !== "text") {
+      continue;
+    }
+
+    const definition = template.schema.fields[control.id];
+    const nextValue = templateControlValues[control.id];
+    if (!definition || typeof nextValue !== "string" || nextValue.trim().length === 0) {
+      continue;
+    }
+
+    assignSourceValue(sources[definition.source], definition, nextValue);
+  }
+
+  return sources;
 }
 
 function findPhotoFit(layout: WatermarkTemplate["layout"]): StylePanelValues["imageFit"] | null {
@@ -343,7 +421,7 @@ function findPhotoFit(layout: WatermarkTemplate["layout"]): StylePanelValues["im
     return layout.binding === "photo" ? (layout.fit ?? "cover") : null;
   }
 
-  if (layout.type === "text") {
+  if (layout.type === "text" || layout.type === "rect") {
     return null;
   }
 
@@ -357,8 +435,51 @@ function findPhotoFit(layout: WatermarkTemplate["layout"]): StylePanelValues["im
   return null;
 }
 
-function resolveNumericPadding(padding: WatermarkTemplate["canvas"]["padding"]): number {
-  return typeof padding === "number" ? padding : Math.max(padding.x, padding.y);
+function collectLayoutBindings(
+  layout: TemplateLayoutNode,
+  bindings = new Set<string>(),
+): Set<string> {
+  if (layout.type === "text" || layout.type === "image") {
+    bindings.add(layout.binding);
+    return bindings;
+  }
+
+  if (layout.type === "rect") {
+    return bindings;
+  }
+
+  for (const child of layout.children) {
+    collectLayoutBindings(child, bindings);
+  }
+
+  return bindings;
+}
+
+function resolvePaddingValues(padding: WatermarkTemplate["canvas"]["padding"]): {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+} {
+  if (typeof padding === "number") {
+    return {
+      top: padding,
+      right: padding,
+      bottom: padding,
+      left: padding,
+    };
+  }
+
+  if ("x" in padding) {
+    return {
+      top: padding.y,
+      right: padding.x,
+      bottom: padding.y,
+      left: padding.x,
+    };
+  }
+
+  return padding;
 }
 
 const appSessionAtom = atom<AppSession>({
@@ -414,6 +535,19 @@ export const fieldOverridesAtom = atom<Record<string, string>>((get) => {
   return session.fieldOverrides;
 });
 
+export const editorTemplateControlValuesAtom = atom<Record<string, TemplateControlPrimitive>>(
+  (get) => {
+    const session = get(appSessionAtom);
+    const template = get(activeTemplateAtom);
+
+    if (session.screen === "library" || template === null) {
+      return createInitialTemplateControlValues(templates[0]);
+    }
+
+    return session.templateControlValues;
+  },
+);
+
 export const editorControlsAtom = atom<StylePanelValues>((get) => {
   const session = get(appSessionAtom);
   const template = get(activeTemplateAtom);
@@ -455,10 +589,11 @@ export const resolvedFieldsAtom = atom<ResolvedFieldMap>((get) => {
   const metadata = get(editorInstanceAtom)?.metadata ?? emptyMetadata;
   const userSourceValues = get(userSourceValuesAtom);
   const fieldOverrides = get(fieldOverridesAtom);
+  const templateControlValues = get(editorTemplateControlValuesAtom);
 
   return resolveFields({
     schema: template.schema,
-    sources: buildFieldSources(metadata, userSourceValues),
+    sources: buildFieldSources(metadata, userSourceValues, template, templateControlValues),
     overrides: fieldOverrides,
   });
 });
@@ -475,11 +610,14 @@ export const dataCardsAtom = atom<TemplateDataCard[]>((get) => {
   });
 
   const cardEnabled = get(editorCardEnabledAtom);
+  const layoutBindings = collectLayoutBindings(template.layout);
 
-  return cards.map((card) => ({
-    ...card,
-    enabled: card.requiredByTemplate ? true : (cardEnabled[card.id] ?? card.enabled),
-  }));
+  return cards
+    .filter((card) => card.bindings.some((binding) => layoutBindings.has(binding)))
+    .map((card) => ({
+      ...card,
+      enabled: card.requiredByTemplate ? true : (cardEnabled[card.id] ?? card.enabled),
+    }));
 });
 
 export const editorResolvedFieldsAtom = resolvedFieldsAtom;
@@ -520,6 +658,25 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
       }
 
       const defaults = createDefaultTemplateScopedState(template);
+      const currentSession = get(appSessionAtom);
+
+      if (currentSession.screen === "editor") {
+        set(
+          appSessionAtom,
+          buildEditorSession(
+            action.templateId,
+            currentSession.instance,
+            {},
+            {},
+            defaults.controls,
+            defaults.templateControlValues,
+            defaults.cardEnabled,
+            defaults.exportOptions,
+          ),
+        );
+        return;
+      }
+
       set(
         appSessionAtom,
         buildPendingImageSession(
@@ -528,6 +685,7 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
           {},
           {},
           defaults.controls,
+          defaults.templateControlValues,
           defaults.cardEnabled,
           defaults.exportOptions,
         ),
@@ -555,6 +713,7 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
             currentSession.userSourceValues,
             currentSession.fieldOverrides,
             currentSession.controls,
+            currentSession.templateControlValues,
             currentSession.cardEnabled,
             currentSession.exportOptions,
           ),
@@ -568,6 +727,7 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
             currentSession.userSourceValues,
             currentSession.fieldOverrides,
             currentSession.controls,
+            currentSession.templateControlValues,
             currentSession.cardEnabled,
             currentSession.exportOptions,
           ),
@@ -590,6 +750,28 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
           currentSession.userSourceValues,
           currentSession.fieldOverrides,
           currentSession.controls,
+          currentSession.templateControlValues,
+          currentSession.cardEnabled,
+          currentSession.exportOptions,
+        ),
+      );
+      return;
+    }
+    case "set-import-error": {
+      const currentSession = get(appSessionAtom);
+      if (currentSession.screen === "library") {
+        return;
+      }
+
+      set(
+        appSessionAtom,
+        buildPendingImageSession(
+          currentSession.templateId,
+          action.message,
+          currentSession.userSourceValues,
+          currentSession.fieldOverrides,
+          currentSession.controls,
+          currentSession.templateControlValues,
           currentSession.cardEnabled,
           currentSession.exportOptions,
         ),
@@ -605,13 +787,7 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
       const nextFieldOverrides = {
         ...currentSession.fieldOverrides,
       };
-
-      const trimmedValue = action.value.trim();
-      if (trimmedValue.length === 0) {
-        delete nextFieldOverrides[action.fieldId];
-      } else {
-        nextFieldOverrides[action.fieldId] = action.value;
-      }
+      nextFieldOverrides[action.fieldId] = action.value;
 
       set(
         appSessionAtom,
@@ -659,6 +835,7 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
           currentSession.userSourceValues,
           currentSession.fieldOverrides,
           currentSession.controls,
+          currentSession.templateControlValues,
           currentSession.cardEnabled,
           currentSession.exportOptions,
         ),
@@ -691,13 +868,39 @@ export const editorDispatchAtom = atom(null, async (get, set, action: EditorActi
         if (presetPhotoFit !== null) {
           nextControls.imageFit = presetPhotoFit;
         }
-        nextControls.canvasPadding = resolveNumericPadding(preset.canvas.padding);
+        const nextPadding = resolvePaddingValues(preset.canvas.padding);
+        nextControls.canvasPaddingTop = nextPadding.top;
+        nextControls.canvasPaddingRight = nextPadding.right;
+        nextControls.canvasPaddingBottom = nextPadding.bottom;
+        nextControls.canvasPaddingLeft = nextPadding.left;
       }
 
       set(
         appSessionAtom,
         updateTemplateScopedSession(currentSession, {
           controls: nextControls,
+        }),
+      );
+      return;
+    }
+    case "editor/set-template-control": {
+      const currentSession = get(appSessionAtom);
+      if (currentSession.screen === "library") {
+        return;
+      }
+
+      const template = templateMap.get(currentSession.templateId);
+      if (!template || !template.controls.some((control) => control.id === action.payload.id)) {
+        return;
+      }
+
+      set(
+        appSessionAtom,
+        updateTemplateScopedSession(currentSession, {
+          templateControlValues: {
+            ...currentSession.templateControlValues,
+            [action.payload.id]: action.payload.value,
+          },
         }),
       );
       return;

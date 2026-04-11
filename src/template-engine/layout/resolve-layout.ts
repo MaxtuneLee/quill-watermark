@@ -1,23 +1,31 @@
 import { measureText } from "./measure-text";
 import type {
   CanvasPadding,
+  EdgeInsets,
   ImageLayoutNode,
   LayoutAlign,
+  LayoutAnchor,
+  LayoutDirection,
+  LayoutJustify,
   LayoutScalar,
   Rect,
   ResolvedImageLayoutNode,
   ResolvedLayoutNode,
   ResolvedLayoutResult,
+  ResolvedRectLayoutNode,
   ResolvedTextLayoutNode,
   ResolveLayoutInput,
-  StackLayoutNode,
   TemplateLayoutNode,
   TextLayoutNode,
 } from "../types";
 
-function normalizePadding(padding: CanvasPadding): { x: number; y: number } {
+function normalizePadding(padding: CanvasPadding): EdgeInsets {
   if (typeof padding === "number") {
-    return { x: padding, y: padding };
+    return { top: padding, right: padding, bottom: padding, left: padding };
+  }
+
+  if ("x" in padding) {
+    return { top: padding.y, right: padding.x, bottom: padding.y, left: padding.x };
   }
 
   return padding;
@@ -26,16 +34,25 @@ function normalizePadding(padding: CanvasPadding): { x: number; y: number } {
 function insetRect(rect: Rect, padding: CanvasPadding | undefined): Rect {
   const safePadding = normalizePadding(padding ?? 0);
   return {
-    x: rect.x + safePadding.x,
-    y: rect.y + safePadding.y,
-    width: Math.max(0, rect.width - safePadding.x * 2),
-    height: Math.max(0, rect.height - safePadding.y * 2),
+    x: rect.x + safePadding.left,
+    y: rect.y + safePadding.top,
+    width: Math.max(0, rect.width - safePadding.left - safePadding.right),
+    height: Math.max(0, rect.height - safePadding.top - safePadding.bottom),
   };
 }
 
-function resolveScalar(value: LayoutScalar | undefined, fallback: number, limit: number): number {
+function resolveScalar(
+  value: LayoutScalar | undefined,
+  fallback: number,
+  limit: number,
+  hugValue?: number,
+): number {
   if (value === "fill" || typeof value === "undefined") {
     return limit;
+  }
+
+  if (value === "hug") {
+    return Math.min(hugValue ?? fallback, limit || fallback);
   }
 
   return Math.min(value, limit || fallback);
@@ -66,6 +83,33 @@ function alignWithinBounds(
   }
 }
 
+function resolveAnchorPosition(
+  anchor: LayoutAnchor | undefined,
+  bounds: Rect,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  switch (anchor) {
+    case "top-right":
+      return { x: bounds.x + bounds.width - width, y: bounds.y };
+    case "bottom-left":
+      return { x: bounds.x, y: bounds.y + bounds.height - height };
+    case "bottom-right":
+      return {
+        x: bounds.x + bounds.width - width,
+        y: bounds.y + bounds.height - height,
+      };
+    case "center":
+      return {
+        x: bounds.x + (bounds.width - width) / 2,
+        y: bounds.y + (bounds.height - height) / 2,
+      };
+    case "top-left":
+    default:
+      return { x: bounds.x, y: bounds.y };
+  }
+}
+
 function computeImageContentBox(frame: Rect, node: ImageLayoutNode): Rect {
   const fit = node.fit ?? "cover";
   const frameRatio = frame.width / Math.max(frame.height, 1);
@@ -88,21 +132,58 @@ function computeImageContentBox(frame: Rect, node: ImageLayoutNode): Rect {
   };
 }
 
+function isContainerNode(
+  node: TemplateLayoutNode,
+): node is Extract<TemplateLayoutNode, { children: readonly TemplateLayoutNode[] }> {
+  return node.type === "container" || node.type === "stack" || node.type === "overlay";
+}
+
+function collectLeafNode(result: ResolvedLayoutResult, node: ResolvedLayoutNode): void {
+  result.nodes[node.id] = node;
+  result.drawOrder = [...result.drawOrder, node.id];
+}
+
+interface MeasureNodeSizeOptions {
+  treatFillWidthAsHug?: boolean;
+  treatFillHeightAsHug?: boolean;
+}
+
+function resolveTextNaturalSize(
+  node: TextLayoutNode,
+  bounds: Rect,
+  resolvedFields: ResolveLayoutInput["resolvedFields"],
+  options: MeasureNodeSizeOptions = {},
+): { width: number; height: number; measurement: ResolvedTextLayoutNode["text"] } {
+  const textValue = resolvedFields[node.binding]?.value ?? "";
+  const tentativeWidth =
+    node.width === "hug" || (options.treatFillWidthAsHug && node.width === "fill")
+      ? bounds.width
+      : resolveScalar(node.width, bounds.width, bounds.width, bounds.width);
+  const measurement = measureText({
+    text: textValue,
+    font: node.font,
+    maxWidth: tentativeWidth,
+    lineHeight: node.lineHeight,
+    maxLines: node.maxLines,
+  });
+  const width =
+    options.treatFillWidthAsHug && node.width === "fill"
+      ? Math.min(measurement.width, bounds.width)
+      : resolveScalar(node.width, measurement.width, bounds.width, measurement.width);
+
+  return {
+    width,
+    height: measurement.height,
+    measurement,
+  };
+}
+
 function resolveTextNode(
   node: TextLayoutNode,
   bounds: Rect,
   resolvedFields: ResolveLayoutInput["resolvedFields"],
 ): ResolvedTextLayoutNode {
-  const textValue = resolvedFields[node.binding]?.value ?? "";
-  const width = resolveScalar(node.width, bounds.width, bounds.width);
-  const measurement = measureText({
-    text: textValue,
-    font: node.font,
-    maxWidth: width,
-    lineHeight: node.lineHeight,
-    maxLines: node.maxLines,
-  });
-
+  const natural = resolveTextNaturalSize(node, bounds, resolvedFields);
   return {
     id: node.id,
     type: "text",
@@ -110,20 +191,45 @@ function resolveTextNode(
     align: node.align ?? "left",
     font: node.font,
     lineHeight: node.lineHeight,
+    opacity: node.opacity,
     frame: {
       x: bounds.x,
       y: bounds.y,
-      width,
-      height: measurement.height,
+      width: natural.width,
+      height: natural.height,
     },
     contentBox: {
       x: bounds.x,
       y: bounds.y,
-      width,
-      height: measurement.height,
+      width: natural.width,
+      height: natural.height,
     },
-    text: measurement,
+    text: natural.measurement,
   };
+}
+
+function resolveImageNaturalSize(
+  node: ImageLayoutNode,
+  bounds: Rect,
+  options: MeasureNodeSizeOptions = {},
+): { width: number; height: number } {
+  const hugWidth = node.intrinsicSize.width;
+  const width =
+    options.treatFillWidthAsHug && node.width === "fill"
+      ? Math.min(hugWidth, bounds.width)
+      : resolveScalar(node.width, bounds.width, bounds.width, hugWidth);
+  const height =
+    options.treatFillHeightAsHug && node.height === "fill"
+      ? Math.min(node.intrinsicSize.height, bounds.height)
+      : typeof node.height === "number"
+        ? Math.min(node.height, bounds.height)
+        : node.height === "fill"
+          ? bounds.height
+          : node.height === "hug"
+            ? Math.min(node.intrinsicSize.height, bounds.height)
+            : width * (node.intrinsicSize.height / Math.max(node.intrinsicSize.width, 1));
+
+  return { width, height };
 }
 
 function resolveImageNode(
@@ -132,13 +238,9 @@ function resolveImageNode(
   overrideHeight?: number,
   overrideWidth?: number,
 ): ResolvedImageLayoutNode {
-  const width = resolveScalar(node.width, bounds.width, overrideWidth ?? bounds.width);
-  const height =
-    typeof overrideHeight === "number"
-      ? overrideHeight
-      : typeof node.height === "number"
-        ? Math.min(node.height, bounds.height)
-        : width * (node.intrinsicSize.height / Math.max(node.intrinsicSize.width, 1));
+  const natural = resolveImageNaturalSize(node, bounds);
+  const width = overrideWidth ?? natural.width;
+  const height = overrideHeight ?? natural.height;
   const position = alignWithinBounds(bounds, width, height, node.align);
   const frame = {
     x: position.x,
@@ -152,6 +254,7 @@ function resolveImageNode(
     type: "image",
     binding: node.binding,
     fit: node.fit ?? "cover",
+    opacity: node.opacity,
     frame,
     contentBox: computeImageContentBox(frame, node),
     text: {
@@ -163,195 +266,428 @@ function resolveImageNode(
   };
 }
 
-function collectLeafNode(result: ResolvedLayoutResult, node: ResolvedLayoutNode): void {
-  result.nodes[node.id] = node;
-  result.drawOrder = [...result.drawOrder, node.id];
+function resolveRectNode(
+  node: Extract<TemplateLayoutNode, { type: "rect" }>,
+  bounds: Rect,
+): ResolvedRectLayoutNode {
+  const width = resolveScalar(node.width, bounds.width, bounds.width, bounds.width);
+  const height = resolveScalar(node.height, bounds.height, bounds.height, bounds.height);
+  const position =
+    node.position === "absolute"
+      ? resolveAnchorPosition(node.anchor, bounds, width, height)
+      : alignWithinBounds(bounds, width, height, undefined);
+
+  return {
+    id: node.id,
+    type: "rect",
+    fill: node.fill,
+    radius: node.radius,
+    opacity: node.opacity,
+    frame: {
+      x: position.x + (node.offsetX ?? 0),
+      y: position.y + (node.offsetY ?? 0),
+      width,
+      height,
+    },
+    contentBox: {
+      x: position.x + (node.offsetX ?? 0),
+      y: position.y + (node.offsetY ?? 0),
+      width,
+      height,
+    },
+    text: {
+      lines: [],
+      width: 0,
+      height: 0,
+      didTruncate: false,
+    },
+  };
 }
 
-function measureNaturalPrimarySize(
+function getContainerDirection(
+  node: Extract<TemplateLayoutNode, { children: readonly TemplateLayoutNode[] }>,
+): LayoutDirection {
+  if (node.type === "overlay") {
+    return "column";
+  }
+
+  return node.direction;
+}
+
+function getContainerGap(
+  node: Extract<TemplateLayoutNode, { children: readonly TemplateLayoutNode[] }>,
+): number {
+  return node.type === "overlay" ? 0 : (node.gap ?? 0);
+}
+
+function getContainerPadding(
+  node: Extract<TemplateLayoutNode, { children: readonly TemplateLayoutNode[] }>,
+): CanvasPadding | undefined {
+  return node.padding;
+}
+
+function getContainerAlignItems(
+  node: Extract<TemplateLayoutNode, { children: readonly TemplateLayoutNode[] }>,
+): LayoutAlign | undefined {
+  if (node.type === "container") {
+    return node.alignItems;
+  }
+
+  if (node.type === "overlay") {
+    return node.align;
+  }
+
+  return node.align;
+}
+
+function getContainerJustifyContent(
+  node: Extract<TemplateLayoutNode, { children: readonly TemplateLayoutNode[] }>,
+): LayoutJustify | undefined {
+  if (node.type === "container") {
+    return node.justifyContent;
+  }
+
+  return node.type === "overlay"
+    ? node.justify === "end"
+      ? "end"
+      : node.justify === "center"
+        ? "center"
+        : "start"
+    : "start";
+}
+
+function resolvesToContainerFill(node: TemplateLayoutNode, direction: LayoutDirection): boolean {
+  if (direction === "row") {
+    return node.width === "fill";
+  }
+
+  return node.height === "fill";
+}
+
+function resolveCrossAxisSize(
+  node: TemplateLayoutNode,
+  direction: LayoutDirection,
+  bounds: Rect,
+  measured: { width: number; height: number },
+): { width: number; height: number } {
+  if (direction === "row") {
+    return {
+      width: measured.width,
+      height: node.height === "fill" ? bounds.height : measured.height,
+    };
+  }
+
+  return {
+    width: node.width === "fill" ? bounds.width : measured.width,
+    height: measured.height,
+  };
+}
+
+function measureNodeSize(
   node: TemplateLayoutNode,
   bounds: Rect,
   resolvedFields: ResolveLayoutInput["resolvedFields"],
-  direction: StackLayoutNode["direction"],
-): number {
+  options: MeasureNodeSizeOptions = {},
+): { width: number; height: number } {
   if (node.type === "text") {
-    return resolveTextNode(node, bounds, resolvedFields).frame[
-      direction === "column" ? "height" : "width"
-    ];
+    const natural = resolveTextNaturalSize(node, bounds, resolvedFields, options);
+    return { width: natural.width, height: natural.height };
   }
 
   if (node.type === "image") {
-    if ((node.flexGrow ?? 0) > 0) {
-      return 0;
-    }
-
-    if (direction === "column") {
-      return resolveImageNode(node, bounds).frame.height;
-    }
-
-    return resolveImageNode(node, bounds).frame.width;
+    return resolveImageNaturalSize(node, bounds, options);
   }
 
-  return 0;
+  if (node.type === "rect") {
+    return {
+      width:
+        options.treatFillWidthAsHug && node.width === "fill"
+          ? bounds.width
+          : resolveScalar(node.width, bounds.width, bounds.width, bounds.width),
+      height:
+        options.treatFillHeightAsHug && node.height === "fill"
+          ? bounds.height
+          : resolveScalar(node.height, bounds.height, bounds.height, bounds.height),
+    };
+  }
+
+  const contentBounds = insetRect(bounds, getContainerPadding(node));
+  const direction = getContainerDirection(node);
+  const gap = getContainerGap(node);
+  const flowChildren = node.children.filter((child) => child.position !== "absolute");
+  const widthSizes = flowChildren.map((child) =>
+    measureNodeSize(child, contentBounds, resolvedFields, {
+      ...options,
+      treatFillWidthAsHug: true,
+    }),
+  );
+  const heightSizes = flowChildren.map((child) =>
+    measureNodeSize(child, contentBounds, resolvedFields, {
+      ...options,
+      treatFillHeightAsHug: true,
+    }),
+  );
+  const padding = normalizePadding(getContainerPadding(node) ?? 0);
+
+  const hugWidth =
+    direction === "row"
+      ? widthSizes.reduce((sum, size) => sum + size.width, 0) +
+        Math.max(0, widthSizes.length - 1) * gap
+      : widthSizes.reduce((max, size) => Math.max(max, size.width), 0);
+  const hugHeight =
+    direction === "column"
+      ? heightSizes.reduce((sum, size) => sum + size.height, 0) +
+        Math.max(0, heightSizes.length - 1) * gap
+      : heightSizes.reduce((max, size) => Math.max(max, size.height), 0);
+
+  const resolvedHugWidth = Math.min(hugWidth + padding.left + padding.right, bounds.width);
+  const resolvedHugHeight = Math.min(hugHeight + padding.top + padding.bottom, bounds.height);
+  const width =
+    node.width === "fill"
+      ? options.treatFillWidthAsHug
+        ? resolvedHugWidth
+        : bounds.width
+      : node.width === "hug" || typeof node.width === "undefined"
+        ? resolvedHugWidth
+        : Math.min(node.width, bounds.width);
+  const height =
+    node.height === "fill"
+      ? options.treatFillHeightAsHug
+        ? resolvedHugHeight
+        : bounds.height
+      : node.height === "hug" || typeof node.height === "undefined"
+        ? resolvedHugHeight
+        : Math.min(node.height, bounds.height);
+
+  return { width, height };
 }
 
-function layoutStack(
-  node: StackLayoutNode,
+function placeAbsoluteNode(
+  node: TemplateLayoutNode,
   bounds: Rect,
   resolvedFields: ResolveLayoutInput["resolvedFields"],
   result: ResolvedLayoutResult,
 ): void {
-  const contentBounds = insetRect(bounds, node.padding);
-  const gap = node.gap ?? 0;
-  const childCount = node.children.length;
-  const totalGap = Math.max(0, childCount - 1) * gap;
-  const primaryLimit = node.direction === "column" ? contentBounds.height : contentBounds.width;
-  const availablePrimary = Math.max(0, primaryLimit - totalGap);
-  const totalFlex = node.children.reduce((sum, child) => {
-    return sum + ("flexGrow" in child ? (child.flexGrow ?? 0) : 0);
-  }, 0);
-  const fixedPrimary = node.children.reduce((sum, child) => {
-    return sum + measureNaturalPrimarySize(child, contentBounds, resolvedFields, node.direction);
-  }, 0);
-  const remainingPrimary = Math.max(0, availablePrimary - fixedPrimary);
+  const measured = measureNodeSize(node, bounds, resolvedFields);
+  const anchored = resolveAnchorPosition(node.anchor, bounds, measured.width, measured.height);
+  const nextBounds = {
+    x: anchored.x + (node.offsetX ?? 0),
+    y: anchored.y + (node.offsetY ?? 0),
+    width: measured.width,
+    height: measured.height,
+  };
 
-  let cursorX = contentBounds.x;
-  let cursorY = contentBounds.y;
-
-  for (const child of node.children) {
-    if (child.type === "stack") {
-      const childBounds =
-        node.direction === "column"
-          ? { x: contentBounds.x, y: cursorY, width: contentBounds.width, height: remainingPrimary }
-          : {
-              x: cursorX,
-              y: contentBounds.y,
-              width: remainingPrimary,
-              height: contentBounds.height,
-            };
-      layoutStack(child, childBounds, resolvedFields, result);
-      continue;
-    }
-
-    if (child.type === "overlay") {
-      layoutOverlay(child, contentBounds, resolvedFields, result);
-      continue;
-    }
-
-    if (child.type === "image") {
-      const allocatedPrimary =
-        totalFlex > 0 && (child.flexGrow ?? 0) > 0
-          ? (remainingPrimary * (child.flexGrow ?? 0)) / totalFlex
-          : undefined;
-      const allocatedBounds =
-        node.direction === "column"
-          ? {
-              x: contentBounds.x,
-              y: cursorY,
-              width: contentBounds.width,
-              height: allocatedPrimary ?? contentBounds.height,
-            }
-          : {
-              x: cursorX,
-              y: contentBounds.y,
-              width: allocatedPrimary ?? contentBounds.width,
-              height: contentBounds.height,
-            };
-      const resolved = resolveImageNode(
-        child,
-        allocatedBounds,
-        node.direction === "column" ? allocatedPrimary : undefined,
-        node.direction === "row" ? allocatedPrimary : undefined,
-      );
-      collectLeafNode(result, resolved);
-
-      if (node.direction === "column") {
-        cursorY += resolved.frame.height + gap;
-      } else {
-        cursorX += resolved.frame.width + gap;
-      }
-      continue;
-    }
-
-    const width =
-      node.direction === "column"
-        ? contentBounds.width
-        : resolveScalar(child.width, contentBounds.width, contentBounds.width);
-    const resolved = resolveTextNode(
-      child,
-      {
-        x: cursorX,
-        y: cursorY,
-        width,
-        height: contentBounds.height,
-      },
-      resolvedFields,
-    );
-    collectLeafNode(result, resolved);
-
-    if (node.direction === "column") {
-      cursorY += resolved.frame.height + gap;
-    } else {
-      cursorX += resolved.frame.width + gap;
-    }
-  }
+  resolveNode(node, nextBounds, resolvedFields, result);
 }
 
-function layoutOverlay(
-  node: Extract<TemplateLayoutNode, { type: "overlay" }>,
+function layoutContainer(
+  node: Extract<TemplateLayoutNode, { children: readonly TemplateLayoutNode[] }>,
   bounds: Rect,
   resolvedFields: ResolveLayoutInput["resolvedFields"],
   result: ResolvedLayoutResult,
 ): void {
-  const contentBounds = insetRect(bounds, node.padding);
+  const measured = measureNodeSize(node, bounds, resolvedFields);
+  const frame =
+    node.position === "absolute"
+      ? (() => {
+          const anchored = resolveAnchorPosition(
+            node.anchor,
+            bounds,
+            measured.width,
+            measured.height,
+          );
+          return {
+            x: anchored.x + (node.offsetX ?? 0),
+            y: anchored.y + (node.offsetY ?? 0),
+            width: measured.width,
+            height: measured.height,
+          };
+        })()
+      : {
+          x: bounds.x,
+          y: bounds.y,
+          width: measured.width,
+          height: measured.height,
+        };
 
-  for (const child of node.children) {
-    if (child.type === "stack") {
-      layoutStack(child, contentBounds, resolvedFields, result);
-      continue;
-    }
-
-    if (child.type === "overlay") {
-      layoutOverlay(child, contentBounds, resolvedFields, result);
-      continue;
-    }
-
-    if (child.type === "image") {
-      const resolved = resolveImageNode(
-        child,
-        contentBounds,
-        contentBounds.height,
-        contentBounds.width,
-      );
-      collectLeafNode(result, resolved);
-      continue;
-    }
-
-    const resolved = resolveTextNode(child, contentBounds, resolvedFields);
-    const position = alignWithinBounds(
-      contentBounds,
-      resolved.frame.width,
-      resolved.frame.height,
-      node.align ?? "center",
-    );
+  if (node.type === "container" && node.background) {
     collectLeafNode(result, {
-      ...resolved,
-      frame: {
-        ...resolved.frame,
-        x: position.x,
-        y: position.y,
+      id: `${node.id}__background`,
+      type: "rect",
+      fill: node.background,
+      radius: node.radius,
+      opacity: node.opacity,
+      frame,
+      contentBox: frame,
+      text: {
+        lines: [],
+        width: 0,
+        height: 0,
+        didTruncate: false,
       },
     });
   }
+
+  if (node.type === "overlay") {
+    const contentBounds = insetRect(frame, node.padding);
+    for (const child of node.children) {
+      if (child.position === "absolute") {
+        placeAbsoluteNode(child, contentBounds, resolvedFields, result);
+        continue;
+      }
+
+      const childSize = measureNodeSize(child, contentBounds, resolvedFields);
+      const positioned = alignWithinBounds(
+        contentBounds,
+        childSize.width,
+        childSize.height,
+        node.align,
+      );
+      resolveNode(
+        child,
+        {
+          x: positioned.x,
+          y: positioned.y,
+          width: childSize.width,
+          height: childSize.height,
+        },
+        resolvedFields,
+        result,
+      );
+    }
+    return;
+  }
+
+  const contentBounds = insetRect(frame, getContainerPadding(node));
+  const direction = getContainerDirection(node);
+  const gap = getContainerGap(node);
+  const alignItems = getContainerAlignItems(node);
+  const justifyContent = getContainerJustifyContent(node) ?? "start";
+  const flowChildren = node.children.filter((child) => child.position !== "absolute");
+  const absoluteChildren = node.children.filter((child) => child.position === "absolute");
+  const fillChildIndexes = flowChildren.flatMap((child, index) =>
+    resolvesToContainerFill(child, direction) ? [index] : [],
+  );
+  const childSizes = flowChildren.map((child, index) =>
+    fillChildIndexes.includes(index) ? null : measureNodeSize(child, contentBounds, resolvedFields),
+  );
+  const totalFixedPrimary =
+    childSizes.reduce((sum, size) => {
+      if (size === null) {
+        return sum;
+      }
+
+      return sum + (direction === "row" ? size.width : size.height);
+    }, 0) +
+    Math.max(0, flowChildren.length - 1) * gap;
+  const primaryLimit = direction === "row" ? contentBounds.width : contentBounds.height;
+  const fillPrimarySize =
+    fillChildIndexes.length > 0
+      ? Math.max(0, primaryLimit - totalFixedPrimary) / fillChildIndexes.length
+      : 0;
+  const resolvedChildSizes = flowChildren.map((child, index) => {
+    const measured = childSizes[index] ?? measureNodeSize(child, contentBounds, resolvedFields);
+    if (!fillChildIndexes.includes(index)) {
+      return resolveCrossAxisSize(child, direction, contentBounds, measured);
+    }
+
+    return direction === "row"
+      ? {
+          width: fillPrimarySize,
+          height: child.height === "fill" ? contentBounds.height : measured.height,
+        }
+      : {
+          width: child.width === "fill" ? contentBounds.width : measured.width,
+          height: fillPrimarySize,
+        };
+  });
+  const totalPrimary =
+    resolvedChildSizes.reduce(
+      (sum, size) => sum + (direction === "row" ? size.width : size.height),
+      0,
+    ) +
+    Math.max(0, flowChildren.length - 1) * gap;
+  const remainingPrimary = Math.max(0, primaryLimit - totalPrimary);
+  const gapSize =
+    justifyContent === "space-between" && flowChildren.length > 1
+      ? gap + remainingPrimary / (flowChildren.length - 1)
+      : gap;
+  const startPrimary =
+    justifyContent === "center"
+      ? remainingPrimary / 2
+      : justifyContent === "end"
+        ? remainingPrimary
+        : 0;
+
+  let cursor = startPrimary;
+
+  for (const [index, child] of flowChildren.entries()) {
+    const size = resolvedChildSizes[index];
+    const childBounds =
+      direction === "row"
+        ? {
+            x: contentBounds.x + cursor,
+            y:
+              alignItems === "end"
+                ? contentBounds.y + contentBounds.height - size.height
+                : alignItems === "center"
+                  ? contentBounds.y + (contentBounds.height - size.height) / 2
+                  : contentBounds.y,
+            width: size.width,
+            height: size.height,
+          }
+        : {
+            x:
+              alignItems === "end"
+                ? contentBounds.x + contentBounds.width - size.width
+                : alignItems === "center"
+                  ? contentBounds.x + (contentBounds.width - size.width) / 2
+                  : contentBounds.x,
+            y: contentBounds.y + cursor,
+            width: size.width,
+            height: size.height,
+          };
+
+    resolveNode(child, childBounds, resolvedFields, result);
+    cursor += (direction === "row" ? size.width : size.height) + gapSize;
+  }
+
+  for (const child of absoluteChildren) {
+    placeAbsoluteNode(child, contentBounds, resolvedFields, result);
+  }
+}
+
+function resolveNode(
+  node: TemplateLayoutNode,
+  bounds: Rect,
+  resolvedFields: ResolveLayoutInput["resolvedFields"],
+  result: ResolvedLayoutResult,
+): void {
+  if (isContainerNode(node)) {
+    layoutContainer(node, bounds, resolvedFields, result);
+    return;
+  }
+
+  if (node.type === "image") {
+    collectLeafNode(result, resolveImageNode(node, bounds));
+    return;
+  }
+
+  if (node.type === "rect") {
+    collectLeafNode(result, resolveRectNode(node, bounds));
+    return;
+  }
+
+  collectLeafNode(result, resolveTextNode(node, bounds, resolvedFields));
 }
 
 export function resolveLayout(input: ResolveLayoutInput): ResolvedLayoutResult {
   const safePadding = normalizePadding(input.canvas.padding);
   const safeBounds = {
-    x: safePadding.x,
-    y: safePadding.y,
-    width: Math.max(0, input.canvas.width - safePadding.x * 2),
-    height: Math.max(0, input.canvas.height - safePadding.y * 2),
+    x: safePadding.left,
+    y: safePadding.top,
+    width: Math.max(0, input.canvas.width - safePadding.left - safePadding.right),
+    height: Math.max(0, input.canvas.height - safePadding.top - safePadding.bottom),
   };
 
   const result: ResolvedLayoutResult = {
@@ -360,15 +696,6 @@ export function resolveLayout(input: ResolveLayoutInput): ResolvedLayoutResult {
     drawOrder: [],
   };
 
-  if (input.layout.type === "stack") {
-    layoutStack(input.layout, safeBounds, input.resolvedFields, result);
-  } else if (input.layout.type === "overlay") {
-    layoutOverlay(input.layout, safeBounds, input.resolvedFields, result);
-  } else if (input.layout.type === "image") {
-    collectLeafNode(result, resolveImageNode(input.layout, safeBounds));
-  } else {
-    collectLeafNode(result, resolveTextNode(input.layout, safeBounds, input.resolvedFields));
-  }
-
+  resolveNode(input.layout, safeBounds, input.resolvedFields, result);
   return result;
 }

@@ -24,13 +24,23 @@ export type TemplateFieldSource = "exif" | "gps" | "user" | "derived" | "afilmor
 export type ResolvedFieldMode = "auto" | "placeholder" | "manual";
 export type LayoutDirection = "row" | "column";
 export type LayoutAlign = "start" | "center" | "end" | "stretch";
+export type LayoutJustify = "start" | "center" | "end" | "space-between";
 export type TextAlign = "left" | "center" | "right";
-export type LayoutScalar = number | "fill";
+export type LayoutScalar = number | "fill" | "hug";
 export type ImageFit = "cover" | "contain";
+export type LayoutPosition = "flow" | "absolute";
+export type LayoutAnchor = "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center";
 
 export interface Point {
   x: number;
   y: number;
+}
+
+export interface EdgeInsets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
 }
 
 export interface Rect {
@@ -45,7 +55,7 @@ export interface IntrinsicSize {
   height: number;
 }
 
-export type CanvasPadding = number | Point;
+export type CanvasPadding = number | Point | EdgeInsets;
 
 export interface AspectRatioDefinition {
   width: number;
@@ -83,7 +93,29 @@ interface LayoutNodeBase {
   id: string;
 }
 
-export interface StackLayoutNode extends LayoutNodeBase {
+interface LayoutBoxNodeBase extends LayoutNodeBase {
+  width?: LayoutScalar;
+  height?: LayoutScalar;
+  position?: LayoutPosition;
+  anchor?: LayoutAnchor;
+  offsetX?: number;
+  offsetY?: number;
+  opacity?: number;
+}
+
+export interface ContainerLayoutNode extends LayoutBoxNodeBase {
+  type: "container";
+  direction: LayoutDirection;
+  children: readonly TemplateLayoutNode[];
+  gap?: number;
+  alignItems?: LayoutAlign;
+  justifyContent?: LayoutJustify;
+  padding?: CanvasPadding;
+  background?: string;
+  radius?: number;
+}
+
+export interface StackLayoutNode extends LayoutBoxNodeBase {
   type: "stack";
   direction: LayoutDirection;
   children: readonly TemplateLayoutNode[];
@@ -92,7 +124,7 @@ export interface StackLayoutNode extends LayoutNodeBase {
   padding?: CanvasPadding;
 }
 
-export interface OverlayLayoutNode extends LayoutNodeBase {
+export interface OverlayLayoutNode extends LayoutBoxNodeBase {
   type: "overlay";
   children: readonly TemplateLayoutNode[];
   align?: LayoutAlign;
@@ -100,33 +132,43 @@ export interface OverlayLayoutNode extends LayoutNodeBase {
   padding?: CanvasPadding;
 }
 
-export interface TextLayoutNode extends LayoutNodeBase {
+export interface TextLayoutNode extends LayoutBoxNodeBase {
   type: "text";
   binding: string;
   font: string;
   lineHeight: number;
+  color?: string;
   align?: TextAlign;
   width?: LayoutScalar;
   maxLines?: number;
   flexGrow?: number;
 }
 
-export interface ImageLayoutNode extends LayoutNodeBase {
+export interface ImageLayoutNode extends LayoutBoxNodeBase {
   type: "image";
   binding: string;
   intrinsicSize: IntrinsicSize;
   fit?: ImageFit;
+  color?: string;
   width?: LayoutScalar;
   height?: LayoutScalar;
   flexGrow?: number;
   align?: LayoutAlign;
 }
 
+export interface RectLayoutNode extends LayoutBoxNodeBase {
+  type: "rect";
+  fill: string;
+  radius?: number;
+}
+
 export type TemplateLayoutNode =
+  | ContainerLayoutNode
   | StackLayoutNode
   | OverlayLayoutNode
   | TextLayoutNode
-  | ImageLayoutNode;
+  | ImageLayoutNode
+  | RectLayoutNode;
 
 export type TemplateLayout = TemplateLayoutNode;
 
@@ -283,32 +325,41 @@ export interface MeasuredTextBlock {
 
 interface ResolvedLayoutLeafBase {
   id: string;
-  type: "image" | "text";
-  binding: string;
+  type: "image" | "text" | "rect";
   frame: Rect;
   contentBox: Rect;
   align?: TextAlign;
   font?: string;
   lineHeight?: number;
+  opacity?: number;
   text: MeasuredTextBlock;
 }
 
 export interface ResolvedImageLayoutNode extends ResolvedLayoutLeafBase {
   type: "image";
+  binding: string;
   fit: ImageFit;
   contentBox: Rect;
 }
 
 export interface ResolvedTextLayoutNode extends ResolvedLayoutLeafBase {
   type: "text";
+  binding: string;
   font: string;
   lineHeight: number;
   text: MeasuredTextBlock;
 }
 
-export interface ResolvedLayoutNode extends ResolvedLayoutLeafBase {
-  fit?: ImageFit;
+export interface ResolvedRectLayoutNode extends ResolvedLayoutLeafBase {
+  type: "rect";
+  fill: string;
+  radius?: number;
 }
+
+export type ResolvedLayoutNode =
+  | ResolvedImageLayoutNode
+  | ResolvedTextLayoutNode
+  | ResolvedRectLayoutNode;
 
 export interface ResolvedLayoutResult {
   safeBounds: Rect;

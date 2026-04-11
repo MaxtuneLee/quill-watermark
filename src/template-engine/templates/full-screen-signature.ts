@@ -1,9 +1,10 @@
 import type { WatermarkTemplate } from "../types";
 import {
   createTemplateCanvas,
-  createTemplateLayout,
   createTemplatePresets,
-  defaultTemplateSchema,
+  createImageNode,
+  createTextNode,
+  extendTemplateSchema,
   pickTemplateFieldGroups,
 } from "./shared";
 
@@ -16,9 +17,26 @@ export const fullScreenSignatureTemplate: WatermarkTemplate = {
   aspectSupport: ["1:1", "4:5", "16:9", "9:16"],
   tags: ["bold", "hero"],
   canvas: createTemplateCanvas(32),
-  layout: createTemplateLayout("full-overlay", "center"),
+  layout: {
+    id: "root",
+    type: "overlay",
+    align: "center",
+    justify: "center",
+    children: [
+      createImageNode("photo", "cover"),
+      createTextNode("signature", "signatureLine", '32px "Helvetica Neue"', "center", 2),
+    ],
+  },
   presets: createTemplatePresets(["1:1", "4:5", "16:9", "9:16"]),
-  schema: defaultTemplateSchema,
+  schema: extendTemplateSchema({
+    signatureLine: {
+      kind: "text",
+      source: "brand",
+      path: "signature",
+      editable: true,
+      placeholder: "crafted by quill",
+    },
+  }),
   fieldGroups: pickTemplateFieldGroups(["location", "author", "brand-mark"]),
   controls: [
     {

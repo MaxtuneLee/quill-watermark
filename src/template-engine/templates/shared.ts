@@ -1,5 +1,6 @@
 import type {
   AspectRatioDefinition,
+  CanvasPadding,
   ImageLayoutNode,
   TemplateAspect,
   TemplateCanvasDefinition,
@@ -15,6 +16,12 @@ import type {
 
 export const defaultTemplateSchema: TemplateFieldSchema = {
   fields: {
+    cameraBrandLogo: {
+      kind: "image",
+      source: "derived",
+      path: "cameraBrandLogo",
+      editable: true,
+    },
     brandLine: {
       kind: "text",
       source: "brand",
@@ -61,6 +68,15 @@ export const defaultTemplateSchema: TemplateFieldSchema = {
   },
 };
 
+export function extendTemplateSchema(fields: TemplateFieldSchema["fields"]): TemplateFieldSchema {
+  return {
+    fields: {
+      ...defaultTemplateSchema.fields,
+      ...fields,
+    },
+  };
+}
+
 const fieldGroupsById: Record<string, TemplateFieldGroup> = {
   "camera-model": {
     id: "camera-model",
@@ -95,7 +111,7 @@ const fieldGroupsById: Record<string, TemplateFieldGroup> = {
   "brand-mark": {
     id: "brand-mark",
     title: "Brand Mark",
-    bindings: ["brandLine"],
+    bindings: ["cameraBrandLogo", "brandLine"],
     requiredByTemplate: false,
   },
 };
@@ -138,7 +154,7 @@ function createPresetOverrides(aspect: TemplateAspect): readonly TemplatePresetO
   }
 }
 
-function createImageNode(
+export function createImageNode(
   id: string,
   fit: "cover" | "contain",
   width = 1600,
@@ -155,7 +171,26 @@ function createImageNode(
   };
 }
 
-function createTextNode(
+export function createBoundImageNode(
+  id: string,
+  binding: string,
+  fit: "cover" | "contain",
+  width: number,
+  height: number,
+): ImageLayoutNode {
+  return {
+    id,
+    type: "image",
+    binding,
+    fit,
+    intrinsicSize: { width, height },
+    width,
+    height,
+    flexGrow: 0,
+  };
+}
+
+export function createTextNode(
   id: string,
   binding: string,
   font: string,
@@ -175,7 +210,7 @@ function createTextNode(
 }
 
 export function createTemplateCanvas(
-  padding: number,
+  padding: CanvasPadding,
   background = "#111111",
 ): TemplateCanvasDefinition {
   return {

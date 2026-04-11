@@ -1,9 +1,11 @@
 import type { WatermarkTemplate } from "../types";
 import {
   createTemplateCanvas,
-  createTemplateLayout,
   createTemplatePresets,
-  defaultTemplateSchema,
+  createBoundImageNode,
+  createImageNode,
+  createTextNode,
+  extendTemplateSchema,
   pickTemplateFieldGroups,
 } from "./shared";
 
@@ -15,10 +17,96 @@ export const minimalInfoStripTemplate: WatermarkTemplate = {
   coverImage: "/templates/minimal.jpeg",
   aspectSupport: ["1:1", "4:5", "3:2"],
   tags: ["minimal", "light"],
-  canvas: createTemplateCanvas(18),
-  layout: createTemplateLayout("top-strip", "right"),
+  canvas: createTemplateCanvas(0),
+  layout: {
+    id: "root",
+    type: "container",
+    direction: "column",
+    gap: 0,
+    width: "fill",
+    height: "fill",
+    children: [
+      {
+        ...createImageNode("photo", "cover"),
+        width: "fill",
+        height: "fill",
+      },
+      {
+        id: "footer-strip",
+        type: "container",
+        direction: "row",
+        width: "fill",
+        gap: 16,
+        alignItems: "center",
+        padding: { x: 22, y: 18 },
+        background: "#2f2714",
+        children: [
+          {
+            id: "copy",
+            type: "container",
+            direction: "column",
+            width: "fill",
+            gap: 2,
+            children: [
+              {
+                ...createTextNode("brand", "brandLine", '18px "Helvetica Neue"', "left", 1),
+                color: "#f5f1e8",
+              },
+              {
+                id: "camera",
+                type: "text",
+                binding: "cameraModel",
+                font: '12px "Helvetica Neue"',
+                lineHeight: 16,
+                color: "#f5f1e8",
+                align: "left",
+                opacity: 0.82,
+                width: 240,
+                maxLines: 1,
+              },
+              {
+                id: "settings",
+                type: "text",
+                binding: "shootingParameters",
+                font: '13px "Helvetica Neue"',
+                lineHeight: 18,
+                color: "#f5f1e8",
+                align: "left",
+                opacity: 0.68,
+                width: 280,
+                maxLines: 1,
+              },
+            ],
+          },
+          {
+            id: "logo-slot",
+            type: "container",
+            direction: "row",
+            width: 160,
+            justifyContent: "end",
+            alignItems: "center",
+            children: [
+              {
+                ...createBoundImageNode("camera-brand-logo", "cameraBrandLogo", "contain", 50, 50),
+                color: "#ffffff",
+                align: "end",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
   presets: createTemplatePresets(["1:1", "4:5", "3:2"]),
-  schema: defaultTemplateSchema,
+  schema: extendTemplateSchema({
+    metaLine: {
+      kind: "text",
+      source: "brand",
+      path: "minimalMeta",
+      editable: true,
+      placeholder: "Film simulation",
+    },
+  }),
   fieldGroups: pickTemplateFieldGroups([
     "camera-model",
     "shooting-parameters",
@@ -26,8 +114,18 @@ export const minimalInfoStripTemplate: WatermarkTemplate = {
     "brand-mark",
   ]),
   controls: [
-    { id: "brandLine", label: "Brand line", type: "text", defaultValue: "Quill Studio" },
-    { id: "metaLine", label: "Meta line", type: "text", defaultValue: "Film simulation" },
+    {
+      id: "brandLine",
+      label: "Brand line",
+      type: "text",
+      defaultValue: "Quill Studio",
+    },
+    {
+      id: "metaLine",
+      label: "Meta line",
+      type: "text",
+      defaultValue: "Film simulation",
+    },
     {
       id: "lineWeight",
       label: "Line weight",

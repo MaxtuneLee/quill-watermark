@@ -12,6 +12,11 @@ interface InterpolationResult {
   hasTokens: boolean;
 }
 
+interface FieldInterpolationResult {
+  value: string | null;
+  hasTokens: boolean;
+}
+
 function normalizeValue(value: unknown): string | null {
   if (value === null || value === undefined) {
     return null;
@@ -90,6 +95,31 @@ function interpolateTemplate(template: string, sources: TemplateFieldSources): I
   };
 }
 
+function interpolateFieldReferences(
+  template: string,
+  fieldValues: Record<string, string | null>,
+): FieldInterpolationResult {
+  const tokenPattern = /(?<!\{)\{\s*([^{}]+?)\s*\}(?!\})/g;
+  const matches = [...template.matchAll(tokenPattern)];
+
+  if (matches.length === 0) {
+    return {
+      value: normalizeValue(template),
+      hasTokens: false,
+    };
+  }
+
+  const rendered = template.replaceAll(tokenPattern, (match, token) => {
+    const value = fieldValues[token.trim()];
+    return value ?? match;
+  });
+
+  return {
+    value: normalizeValue(rendered.replaceAll(/\s{2,}/g, " ")),
+    hasTokens: true,
+  };
+}
+
 function applyFallback(
   fallbackRules: readonly { whenMissing: readonly string[]; use: string }[] | undefined,
   sources: TemplateFieldSources,
@@ -129,13 +159,45 @@ function resolveAutoValue(
   return rawSourceValue;
 }
 
+function resolveBaseFieldValues(input: ResolveFieldsInput): Record<string, string | null> {
+  const schema = validateFieldSchema(input.schema);
+
+  return Object.fromEntries(
+    Object.entries(schema.fields).map(([fieldId, definition]) => {
+      const autoValue = resolveAutoValue(definition, { ...input, schema });
+      if (autoValue !== null) {
+        return [fieldId, applyFormatters(autoValue, definition.format)];
+      }
+
+      const fallbackValue = applyFallback(definition.fallback, input.sources);
+      if (fallbackValue !== null) {
+        return [fieldId, applyFormatters(fallbackValue, definition.format)];
+      }
+
+      if (definition.placeholder) {
+        const interpolated = interpolateTemplate(definition.placeholder, input.sources);
+        if (!interpolated.hasTokens && interpolated.value !== null) {
+          return [fieldId, applyFormatters(interpolated.value, definition.format)];
+        }
+      }
+
+      return [fieldId, null];
+    }),
+  );
+}
+
 export function resolveFields(input: ResolveFieldsInput): ResolvedFieldMap {
   const schema = validateFieldSchema(input.schema);
+  const baseFieldValues = resolveBaseFieldValues({ ...input, schema });
 
   return Object.fromEntries(
     Object.entries(schema.fields).map(([fieldId, definition]) => {
       const overrideValue = normalizeValue(input.overrides[fieldId]);
       if (overrideValue !== null) {
+        const sourceInterpolated = interpolateTemplate(overrideValue, input.sources);
+        const overrideTemplate = sourceInterpolated.value ?? overrideValue;
+        const fieldInterpolated = interpolateFieldReferences(overrideTemplate, baseFieldValues);
+
         return [
           fieldId,
           {
@@ -143,7 +205,7 @@ export function resolveFields(input: ResolveFieldsInput): ResolvedFieldMap {
             source: definition.source,
             editable: definition.editable,
             mode: "manual",
-            value: applyFormatters(overrideValue, definition.format),
+            value: applyFormatters(fieldInterpolated.value ?? overrideTemplate, definition.format),
           },
         ];
       }

@@ -6,9 +6,22 @@ import { Button } from "../../components/ui";
 interface ImageImporterProps {
   dispatch: (action: EditorAction) => Promise<void> | void;
   importError: string | null;
+  buttonLabel?: string;
+  buttonAriaLabel?: string;
+  className?: string;
+  description?: string;
+  title?: string;
 }
 
-export function ImageImporter({ dispatch, importError }: ImageImporterProps) {
+export function ImageImporter({
+  dispatch,
+  importError,
+  buttonLabel = "Add Photo",
+  buttonAriaLabel = "Add photo",
+  className,
+  description = "Import one photo to begin editing this template.",
+  title,
+}: ImageImporterProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -32,16 +45,32 @@ export function ImageImporter({ dispatch, importError }: ImageImporterProps) {
   };
 
   return (
-    <section aria-label="Image importer">
-      <p>Import one photo to begin editing this template.</p>
-      {importError ? <p role="alert">{importError}</p> : null}
+    <section
+      aria-label="Image importer"
+      className={`grid w-full max-w-sm justify-items-center gap-4 text-center ${className ?? ""}`}
+    >
+      {title ? (
+        <h3 className="font-heading text-[clamp(1.45rem,2vw,2.1rem)] font-semibold tracking-[-0.04em] text-white">
+          {title}
+        </h3>
+      ) : null}
+      {description ? (
+        <p className="max-w-[24ch] text-sm leading-6 text-white/68">{description}</p>
+      ) : null}
+      {importError ? (
+        <p role="alert" className="text-sm text-red-200">
+          {importError}
+        </p>
+      ) : null}
       <Button
         type="button"
+        size="lg"
+        className="min-w-52 border-primary/45 bg-primary/90 text-primary-foreground hover:bg-primary"
         onClick={() => inputRef.current?.click()}
         disabled={isImporting}
-        aria-label="Add photo"
+        aria-label={buttonAriaLabel}
       >
-        {isImporting ? "Importing..." : "Add Photo"}
+        {isImporting ? "Importing..." : buttonLabel}
       </Button>
       <input
         ref={inputRef}

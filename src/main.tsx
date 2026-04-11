@@ -1,6 +1,9 @@
+if (import.meta.env.DEV) {
+  void import("react-grab");
+}
+
 import ReactDOM from "react-dom/client";
 import { RootApp } from "./app/RootApp";
-import "./styles/tokens.css";
 import "./styles/base.css";
 
 const appContainer = document.getElementById("app");
