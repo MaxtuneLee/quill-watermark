@@ -66,7 +66,9 @@ test("selecting a template keeps the editor route and switches the current works
   expect(
     screen.getByRole("tab", { name: /detailed settings/i, selected: true }),
   ).toBeInTheDocument();
-  expect(screen.getByText(/select media/i)).toBeInTheDocument();
+  expect(
+    screen.getByRole("img", { name: /centered brand \+ meta template preview/i }),
+  ).toBeInTheDocument();
 });
 
 test("editor workspace uses a full-bleed shell instead of a centered app box", async () => {
@@ -78,13 +80,14 @@ test("editor workspace uses a full-bleed shell instead of a centered app box", a
 
   expect(editorShell).not.toBeNull();
   expect(editorShell).toHaveAttribute("data-layout", "full-bleed");
+  expect(editorShell?.className).not.toContain("pt-[env(safe-area-inset-top)]");
 });
 
 test("legacy editor routes redirect to the single editor entry while keeping the requested template", async () => {
   const { store, router } = renderApp(["/editor/classic-info-strip"]);
 
   expect(await screen.findByRole("region", { name: /preview workspace/i })).toBeInTheDocument();
-  expect(screen.getByText(/select media/i)).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: /classic info strip template preview/i })).toBeInTheDocument();
   expect(store.get(appScreenAtom)).toBe("editor-pending-image");
   expect(store.get(selectedTemplateIdAtom)).toBe("classic-info-strip");
   expect(router.state.location.pathname).toBe("/");

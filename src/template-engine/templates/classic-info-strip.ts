@@ -98,8 +98,8 @@ export const classicInfoStripTemplate: WatermarkTemplate = {
   ]),
   controls: [
     {
-      id: "brandLine",
-      label: "Brand line",
+      id: "signature",
+      label: "Signature",
       type: "text",
       defaultValue: "Shot on Quill",
     },

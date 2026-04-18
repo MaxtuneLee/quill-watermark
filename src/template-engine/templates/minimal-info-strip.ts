@@ -49,7 +49,7 @@ export const minimalInfoStripTemplate: WatermarkTemplate = {
             gap: 2,
             children: [
               {
-                ...createTextNode("brand", "brandLine", '18px "Helvetica Neue"', "left", 1),
+                ...createTextNode("brand", "signature", '18px "Helvetica Neue"', "left", 1),
                 color: "#f5f1e8",
               },
               {
@@ -115,8 +115,8 @@ export const minimalInfoStripTemplate: WatermarkTemplate = {
   ]),
   controls: [
     {
-      id: "brandLine",
-      label: "Brand line",
+      id: "signature",
+      label: "Signature",
       type: "text",
       defaultValue: "Quill Studio",
     },

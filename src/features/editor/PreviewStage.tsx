@@ -315,28 +315,22 @@ export const PreviewStage = forwardRef<PreviewStageHandle, PreviewStageProps>(fu
     return (
       <section
         aria-label="Preview stage"
-        className="editor-preview-stage grid min-h-full w-full content-center gap-6 px-5 py-8 min-[781px]:px-8 min-[781px]:py-10"
+        className="editor-preview-stage grid min-h-full w-full content-center gap-6 py-8 min-[781px]:py-10"
         role="region"
       >
-        <div className="editor-preview-placeholder-wrap grid min-h-[min(40vh,24rem)] place-items-center min-[781px]:min-h-[min(74vh,54rem)]">
-          <div className="editor-preview-placeholder-frame relative flex aspect-[4/5] w-full max-w-[min(100%,19rem)] items-end justify-start overflow-hidden rounded-none border border-white/10 bg-[#0d0d0d] shadow-[0_20px_68px_rgba(0,0,0,0.28)] min-[781px]:aspect-auto min-[781px]:max-h-[calc(100vh-14rem)] min-[781px]:max-w-[min(64vw,50rem)] min-[781px]:items-center min-[781px]:justify-center">
+        <div className="editor-preview-placeholder-wrap grid min-h-[min(40vh,24rem)] w-full place-items-center min-[781px]:min-h-[min(74vh,54rem)]">
+          <div className="editor-preview-placeholder-frame relative flex min-h-[min(40vh,24rem)] w-full max-w-full items-center justify-center overflow-hidden rounded-none border border-white/10 shadow-[0_20px_68px_rgba(0,0,0,0.28)] min-[781px]:min-h-0 min-[781px]:max-h-[calc(100vh-14rem)] min-[781px]:max-w-[min(64vw,50rem)]">
             <img
               alt={`${template.name} template preview`}
-              className="editor-preview-placeholder-image block h-full w-full object-cover opacity-40 min-[781px]:max-h-[calc(100vh-14rem)] min-[781px]:object-contain"
+              className="editor-preview-placeholder-image block max-h-[min(40vh,24rem)] h-auto w-full object-contain opacity-60 min-[781px]:max-h-[calc(100vh-14rem)]"
               src={template.coverImage}
             />
-            <div className="editor-preview-placeholder-overlay absolute inset-0 bg-[linear-gradient(180deg,rgba(9,8,6,0.18),rgba(9,8,6,0.72))]" />
-            <div className="absolute right-3 bottom-3 left-3 grid gap-1 border border-white/10 bg-black/52 px-3 py-2 text-left min-[781px]:hidden">
-              <p className="text-[0.68rem] font-semibold tracking-[0.14em] text-white/45 uppercase">
-                Preview
-              </p>
-              <p className="truncate font-heading text-[1rem] text-white">{template.name}</p>
-              <p className="text-xs leading-5 text-white/62">
-                Add an image above to start editing.
-              </p>
-              {importError ? <p className="text-xs leading-5 text-red-200">{importError}</p> : null}
-            </div>
           </div>
+          {importError ? (
+            <p className="text-center text-xs leading-5 text-red-200" role="alert">
+              {importError}
+            </p>
+          ) : null}
         </div>
       </section>
     );

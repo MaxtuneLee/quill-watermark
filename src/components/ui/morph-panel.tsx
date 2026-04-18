@@ -40,6 +40,7 @@ const DEFAULT_LAYOUT: MorphPanelLayout = {
   triggerHeight: 36,
   triggerWidth: 36,
 };
+const CONTENT_FADE_IN_DELAY_MS = 72;
 
 export function MorphPanel({
   bodyClassName,
@@ -56,6 +57,9 @@ export function MorphPanel({
   const triggerRef = useRef<HTMLDivElement | null>(null);
   const measureRef = useRef<HTMLDivElement | null>(null);
   const [layout, setLayout] = useState<MorphPanelLayout>(DEFAULT_LAYOUT);
+  const [contentVisible, setContentVisible] = useState(open);
+  const [panelVisible, setPanelVisible] = useState(open);
+  const fadeTimerRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     const triggerNode = triggerRef.current;
@@ -109,6 +113,35 @@ export function MorphPanel({
   }, [children]);
 
   useEffect(() => {
+    if (fadeTimerRef.current !== null) {
+      window.clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+
+    if (open) {
+      setPanelVisible(true);
+      setContentVisible(false);
+
+      fadeTimerRef.current = window.setTimeout(() => {
+        setContentVisible(true);
+        fadeTimerRef.current = null;
+      }, CONTENT_FADE_IN_DELAY_MS);
+
+      return;
+    }
+
+    setContentVisible(false);
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      if (fadeTimerRef.current !== null) {
+        window.clearTimeout(fadeTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) {
       return;
     }
@@ -144,8 +177,9 @@ export function MorphPanel({
     "--morph-panel-open-width": `${Math.max(layout.openWidth, layout.triggerWidth)}px`,
     "--morph-panel-trigger-height": `${layout.triggerHeight}px`,
     "--morph-panel-trigger-width": `${layout.triggerWidth}px`,
-    width: Math.max(layout.openWidth, layout.triggerWidth),
-    top: `calc(100% + ${sideOffset}px)`,
+    height: open ? Math.max(layout.openHeight, layout.triggerHeight) : layout.triggerHeight,
+    top: open ? `calc(100% + ${sideOffset}px)` : 0,
+    width: open ? Math.max(layout.openWidth, layout.triggerWidth) : layout.triggerWidth,
   };
 
   return (
@@ -172,23 +206,28 @@ export function MorphPanel({
         id={panelId}
         aria-hidden={!open}
         className={cn(
-          "absolute right-0 z-30 origin-top-right overflow-hidden border border-white/10 bg-[#161515] text-[oklch(0.96_0.01_95)] shadow-2xl transition-[clip-path,opacity,transform] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)]",
-          open
-            ? "pointer-events-auto opacity-100 translate-y-0"
-            : "pointer-events-none opacity-0 -translate-y-1",
+          "absolute right-0 z-30 origin-top-right overflow-hidden border border-white/10 bg-[#161515] text-[oklch(0.96_0.01_95)] shadow-2xl transition-[height,opacity,top,width] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)]",
+          panelVisible && contentVisible ? "opacity-100" : "opacity-0",
+          open ? "pointer-events-auto" : "pointer-events-none",
           panelClassName,
         )}
-        style={{
-          ...panelStyle,
-          clipPath: open
-            ? "inset(0 0 0 0)"
-            : `inset(0 0 calc(var(--morph-panel-open-height) - var(--morph-panel-trigger-height)) calc(var(--morph-panel-open-width) - var(--morph-panel-trigger-width)))`,
+        onTransitionEnd={(event) => {
+          if (
+            !open &&
+            event.target === event.currentTarget &&
+            (event.propertyName === "height" ||
+              event.propertyName === "top" ||
+              event.propertyName === "width")
+          ) {
+            setPanelVisible(false);
+          }
         }}
+        style={panelStyle}
       >
         <div
           className={cn(
-            "transition-[opacity,transform] duration-220 ease-[cubic-bezier(0.22,1,0.36,1)]",
-            open ? "opacity-100 translate-y-0 delay-100" : "opacity-0 -translate-y-1 delay-0",
+            "transition-opacity duration-220 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            contentVisible ? "opacity-100" : "opacity-0",
             bodyClassName,
           )}
         >

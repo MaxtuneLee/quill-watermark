@@ -43,9 +43,9 @@ export const centeredBrandMetaTemplate: WatermarkTemplate = {
           {
             id: "brand",
             type: "text",
-            binding: "brandLine",
-            font: '30px "Helvetica Neue"',
-            lineHeight: 38,
+            binding: "cameraModel",
+            font: '22px "Helvetica Neue"',
+            lineHeight: 30,
             align: "center",
             width: 520,
             maxLines: 1,
@@ -67,9 +67,16 @@ export const centeredBrandMetaTemplate: WatermarkTemplate = {
     {
       id: "brand-mark",
       title: "Brand Mark",
-      bindings: ["cameraBrandLogo", "brandLine"],
+      bindings: ["cameraBrandLogo", "cameraModel"],
       requiredByTemplate: true,
     },
   ],
-  controls: [{ id: "brandLine", label: "Brand line", type: "text", defaultValue: "QUILL STUDIO" }],
+  controls: [
+    {
+      id: "cameraModel",
+      label: "Camera model",
+      type: "text",
+      defaultValue: "由 {cameraModel} 拍摄",
+    },
+  ],
 };

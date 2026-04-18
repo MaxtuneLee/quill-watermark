@@ -158,7 +158,7 @@ test("renders an explicit empty state when no instance is active", () => {
   expect(
     screen.getByRole("img", { name: /classic info strip template preview/i }),
   ).toBeInTheDocument();
-  expect(screen.getByText(/add an image above to start editing/i)).toBeInTheDocument();
+  expect(screen.queryByText(/add an image above to start editing/i)).not.toBeInTheDocument();
 });
 
 test("renders the empty preview frame without rounded corners and keeps the cover image fully visible", () => {
@@ -180,7 +180,60 @@ test("renders the empty preview frame without rounded corners and keeps the cove
 
   expect(placeholderFrame).toHaveClass("rounded-none");
   expect(placeholderFrame).toHaveClass("min-[781px]:max-w-[min(64vw,50rem)]");
-  expect(placeholderImage).toHaveClass("min-[781px]:object-contain");
+  expect(placeholderImage).toHaveClass("object-contain");
+});
+
+test("renders the placeholder preview without overlay copy and keeps the full cover image visible on mobile", () => {
+  const store = createStore();
+
+  void store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+
+  const { container } = render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  const placeholderFrame = container.querySelector(".editor-preview-placeholder-frame");
+  const placeholderImage = container.querySelector(".editor-preview-placeholder-image");
+  const placeholderOverlayCopy = container.querySelector(".editor-preview-placeholder-copy");
+
+  expect(screen.queryByText(/add an image above to start editing/i)).not.toBeInTheDocument();
+  expect(placeholderOverlayCopy).toBeNull();
+  expect(placeholderFrame).not.toHaveClass("aspect-[4/5]");
+  expect(placeholderImage).toHaveClass("object-contain");
+  expect(placeholderImage).not.toHaveClass("object-cover");
+});
+
+test("renders the placeholder preview edge-to-edge with a transparent frame and translucent cover image", () => {
+  const store = createStore();
+
+  void store.set(editorDispatchAtom, {
+    type: "select-template",
+    templateId: "classic-info-strip",
+  });
+
+  const { container } = render(
+    <Provider store={store}>
+      <PreviewStage />
+    </Provider>,
+  );
+
+  const previewStage = screen.getByRole("region", { name: /preview stage/i });
+  const placeholderWrap = container.querySelector(".editor-preview-placeholder-wrap");
+  const placeholderFrame = container.querySelector(".editor-preview-placeholder-frame");
+  const placeholderImage = container.querySelector(".editor-preview-placeholder-image");
+
+  expect(previewStage).not.toHaveClass("px-5");
+  expect(previewStage).not.toHaveClass("min-[781px]:px-8");
+  expect(placeholderWrap).toHaveClass("w-full");
+  expect(placeholderFrame).toHaveClass("max-w-full");
+  expect(placeholderFrame).not.toHaveClass("bg-[#0d0d0d]");
+  expect(placeholderImage).toHaveClass("w-full");
+  expect(placeholderImage).toHaveClass("opacity-60");
 });
 
 test("preserves text alignment from resolved layout nodes when building render scene", async () => {
@@ -264,7 +317,7 @@ test("renders centered device mark as a logo-only lockup", async () => {
   expect(logoNode).toBeTruthy();
 });
 
-test("renders centered brand meta as a centered logo with a single brand line below it", async () => {
+test("renders centered brand meta as a centered logo with a single device line below it", async () => {
   const store = createStore();
   const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
   vi.mocked(metadataService.extractMetadata).mockResolvedValue({
@@ -300,7 +353,7 @@ test("renders centered brand meta as a centered logo with a single brand line be
 
   const textNodes = (latestScene?.nodes ?? []).filter((node) => node.type === "text");
   const logoNode = findSceneLogoNode(latestScene);
-  const brandNode = textNodes.find((node) => node.value === "QUILL STUDIO");
+  const brandNode = textNodes.find((node) => node.value === "由 Apple iPhone 15 Pro 拍摄");
 
   expect(textNodes).toHaveLength(1);
   expect(logoNode).toBeTruthy();
@@ -566,7 +619,7 @@ test("scales camera brand logos with the logo size control while keeping them ve
   });
 });
 
-test("uses sans-serif by default and updates text font family when typography theme changes", async () => {
+test("uses noto sans by default and updates text font family when typography theme changes", async () => {
   const store = createStore();
   const file = new File(["binary"], "photo.jpg", { type: "image/jpeg" });
   vi.mocked(metadataService.extractMetadata).mockResolvedValue({
@@ -603,7 +656,22 @@ test("uses sans-serif by default and updates text font family when typography th
   if (!defaultTextNode || defaultTextNode.type !== "text") {
     throw new Error("Expected a text node in default scene.");
   }
-  expect(defaultTextNode.font).toContain("sans-serif");
+  expect(defaultTextNode.font).toContain('"Noto Sans Variable"');
+
+  await store.set(editorDispatchAtom, {
+    type: "editor/set-control",
+    payload: { id: "typographyTheme", value: "editorial" },
+  });
+
+  await waitFor(() => {
+    const editorialScene = vi.mocked(renderCanvas).mock.calls.at(-1)?.[1];
+    const editorialTextNode = (editorialScene?.nodes ?? []).find((node) => node.type === "text");
+    expect(editorialTextNode?.type).toBe("text");
+    if (!editorialTextNode || editorialTextNode.type !== "text") {
+      throw new Error("Expected a text node in editorial scene.");
+    }
+    expect(editorialTextNode.font).toContain('"Noto Serif Variable"');
+  });
 
   await store.set(editorDispatchAtom, {
     type: "editor/set-control",
@@ -617,7 +685,7 @@ test("uses sans-serif by default and updates text font family when typography th
     if (!monoTextNode || monoTextNode.type !== "text") {
       throw new Error("Expected a text node in mono scene.");
     }
-    expect(monoTextNode.font).toContain("monospace");
+    expect(monoTextNode.font).toContain('"JetBrains Mono Variable"');
   });
 });
 
@@ -1127,7 +1195,7 @@ test("re-renders brand text when a schema-backed template control changes", asyn
 
   await store.set(editorDispatchAtom, {
     type: "editor/set-template-control",
-    payload: { id: "brandLine", value: "Desk Proof" },
+    payload: { id: "cameraModel", value: "Desk Proof" },
   });
 
   await waitFor(() => {

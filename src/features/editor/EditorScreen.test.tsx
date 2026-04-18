@@ -15,7 +15,7 @@ import { shareImage } from "../../services/export/share-image";
 import { loadImageAsset } from "../../template-engine/render/load-image-asset";
 import { renderCanvas } from "../../template-engine/render/render-canvas";
 import { templates } from "../../template-engine/templates";
-import { EditorScreen } from "./EditorScreen";
+import { EditorScreen, scheduleControlChange } from "./EditorScreen";
 import { makeLoadedEditorProps, makePendingEditorProps } from "./test-fixtures";
 
 vi.mock("../../services/metadata/extract-metadata", () => ({
@@ -144,9 +144,33 @@ test("shows the full workspace shell with a media placeholder before a photo is 
   expect(
     screen.getByRole("img", { name: /classic info strip template preview/i }),
   ).toBeInTheDocument();
-  expect(screen.getByText(/add an image above to start editing/i)).toBeInTheDocument();
+  expect(screen.queryByText(/add an image above to start editing/i)).not.toBeInTheDocument();
   expect(screen.getByText(/import a photo to review the template fields/i)).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: /camera model/i })).not.toBeInTheDocument();
+});
+
+test("shows mobile import guidance that points to the add image button before a photo is loaded", async () => {
+  const originalInnerWidth = window.innerWidth;
+
+  try {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+
+    await renderPendingEditorScreen();
+
+    expect(screen.getByText(/click here to import an image\./i)).toBeInTheDocument();
+  } finally {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: originalInnerWidth,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+  }
 });
 
 test("preserves function-valued button className while appending workspace variants", () => {
@@ -181,6 +205,30 @@ test("renders the desktop workspace shell with rails, top export CTA, and librar
   expect(screen.queryByText(/awaiting photo/i)).not.toBeInTheDocument();
   expect(screen.getByRole("tab", { name: /preset templates/i })).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: /detailed settings/i })).toBeInTheDocument();
+});
+
+test("hides mobile import guidance after a photo has been loaded", async () => {
+  const originalInnerWidth = window.innerWidth;
+
+  try {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+
+    await renderLoadedEditorScreen();
+
+    expect(screen.queryByText(/click here to import an image\./i)).not.toBeInTheDocument();
+  } finally {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: originalInnerWidth,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+  }
 });
 
 test("defaults to the dark editor theme", async () => {
@@ -223,6 +271,77 @@ test("renders desktop style rail sections and design-aligned control groups", as
   ).not.toBeInTheDocument();
 });
 
+test("moves mobile spacing controls into a drawer opened from the frame panel", async () => {
+  const user = userEvent.setup();
+  const originalInnerWidth = window.innerWidth;
+  try {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+    const { container } = await renderLoadedEditorScreen();
+
+    const mobileWorkspace = container.querySelector(".editor-mobile-workspace");
+    expect(mobileWorkspace).not.toBeNull();
+    const mobileControls = within(mobileWorkspace as HTMLElement);
+
+    await user.click(mobileControls.getByRole("button", { name: /^style$/i }));
+
+    expect(mobileControls.queryByRole("button", { name: /^spacing$/i })).not.toBeInTheDocument();
+
+    await user.click(mobileControls.getByRole("button", { name: /open spacing controls/i }));
+
+    expect(await screen.findByRole("heading", { name: /^spacing$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /^spacing$/i }).closest("[data-slot='drawer-content']"),
+    ).toHaveClass("dark");
+    expect(screen.queryAllByText(/^padding$/i)).toHaveLength(1);
+    expect(screen.getByText(/^inner content$/i).closest("div")).toHaveClass("aspect-[4/3]");
+    expect(screen.getByLabelText(/^padding top$/i)).toHaveAttribute("data-slot", "slider");
+    expect(screen.getByLabelText(/^padding right$/i)).toHaveAttribute("data-slot", "slider");
+    expect(screen.getByLabelText(/^padding bottom$/i)).toHaveAttribute("data-slot", "slider");
+    expect(screen.getByLabelText(/^padding left$/i)).toHaveAttribute("data-slot", "slider");
+  } finally {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: originalInnerWidth,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+  }
+});
+
+test("keeps the mobile background full-bleed while confining header and controls to safe areas", async () => {
+  const originalInnerWidth = window.innerWidth;
+  try {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 390,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+    const { container } = await renderLoadedEditorScreen();
+
+    const mobileWorkspace = container.querySelector(".editor-mobile-workspace");
+    const mobileHeader = screen.getByLabelText(/mobile editor header/i);
+    const mobileControls = screen.getByLabelText(/mobile controls/i);
+
+    expect(mobileWorkspace).toHaveClass("h-[100dvh]");
+    expect(mobileHeader).toHaveClass("pt-[calc(env(safe-area-inset-top)+0.5rem)]");
+    expect(mobileHeader.querySelector(".fixed")).toBeNull();
+    expect(mobileControls).toHaveClass("pb-[calc(0.65rem+env(safe-area-inset-bottom))]");
+  } finally {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: originalInnerWidth,
+      writable: true,
+    });
+    window.dispatchEvent(new Event("resize"));
+  }
+});
+
 test("switching templates from the preset tab activates the detailed settings tab", async () => {
   const user = userEvent.setup();
   await renderPendingEditorScreen();
@@ -257,6 +376,19 @@ test("persists style-rail control updates through app state after a remount", as
   );
 
   expect(screen.getByLabelText(/^padding top$/i)).toHaveValue(64);
+});
+
+test("wraps style control updates in a transition", () => {
+  const startTransition = vi.fn((callback: () => void) => callback());
+  const dispatch = vi.fn();
+
+  scheduleControlChange(startTransition, dispatch, "canvasPaddingTop", 64);
+
+  expect(startTransition).toHaveBeenCalled();
+  expect(dispatch).toHaveBeenCalledWith({
+    type: "editor/set-control",
+    payload: { id: "canvasPaddingTop", value: 64 },
+  });
 });
 
 test("persists color control updates through app state after a remount", async () => {

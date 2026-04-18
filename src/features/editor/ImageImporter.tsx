@@ -81,7 +81,7 @@ export function ImageImporter({
         type="button"
         size={buttonSize}
         className={cn(
-          "min-w-52 rounded-none border-primary/45 bg-primary/90 text-primary-foreground hover:bg-primary",
+          "w-full border-primary/45 bg-primary/90 text-primary-foreground hover:bg-primary",
           buttonClassName,
         )}
         onClick={() => {

@@ -161,8 +161,8 @@ test("template text control defaults hydrate matching schema-backed fields", asy
     templateId: "centered-brand-meta",
   });
 
-  expect(store.get(resolvedFieldsAtom).brandLine).toMatchObject({
-    value: "QUILL STUDIO",
+  expect(store.get(resolvedFieldsAtom).cameraModel).toMatchObject({
+    value: "由 Camera unavailable 拍摄",
     mode: "auto",
   });
 });
@@ -267,7 +267,7 @@ test("switching templates keeps the current imported image and only resets templ
     metadata,
   });
   expect(store.get(editorImportErrorAtom)).toBe(null);
-  expect(store.get(resolvedFieldsAtom).cameraModel.value).toBe("Q2");
+  expect(store.get(resolvedFieldsAtom).cameraModel.value).toBe("由 Leica Q2 拍摄");
 });
 
 test("built-in shot-time field can resolve even when no current template layout renders that card", async () => {
@@ -394,7 +394,7 @@ test("card enabled actions update optional card state and preview field visibili
   });
   await store.set(editorDispatchAtom, {
     type: "set-field-override",
-    fieldId: "brandLine",
+    fieldId: "signature",
     value: "Harbor Studio",
   });
   await store.set(editorDispatchAtom, {
@@ -406,7 +406,7 @@ test("card enabled actions update optional card state and preview field visibili
     enabled: false,
     requiredByTemplate: false,
   });
-  expect(store.get(editorPreviewResolvedFieldsAtom).brandLine.value).toBe(null);
+  expect(store.get(editorPreviewResolvedFieldsAtom).signature.value).toBe(null);
 });
 
 test("required placeholder cards stay enabled and expose missing-value state through app state", async () => {
@@ -498,7 +498,7 @@ test("manual overrides and optional card visibility remain app-owned across late
   await store.set(editorDispatchAtom, { type: "import-image", sourceFile: file });
   await store.set(editorDispatchAtom, {
     type: "set-field-override",
-    fieldId: "brandLine",
+    fieldId: "signature",
     value: "Harbor Studio",
   });
   await store.set(editorDispatchAtom, {
@@ -523,7 +523,7 @@ test("manual overrides and optional card visibility remain app-owned across late
     },
   });
 
-  expect(store.get(resolvedFieldsAtom).brandLine).toMatchObject({
+  expect(store.get(resolvedFieldsAtom).signature).toMatchObject({
     mode: "manual",
     value: "Harbor Studio",
   });
@@ -532,7 +532,7 @@ test("manual overrides and optional card visibility remain app-owned across late
     requiredByTemplate: false,
     mode: "manual",
   });
-  expect(store.get(editorPreviewResolvedFieldsAtom).brandLine.value).toBe(null);
+  expect(store.get(editorPreviewResolvedFieldsAtom).signature.value).toBe(null);
 });
 
 test("export option actions persist export settings in editor state", async () => {

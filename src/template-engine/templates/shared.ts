@@ -22,10 +22,10 @@ export const defaultTemplateSchema: TemplateFieldSchema = {
       path: "cameraBrandLogo",
       editable: true,
     },
-    brandLine: {
+    signature: {
       kind: "text",
-      source: "brand",
-      path: "line",
+      source: "user",
+      path: "signature",
       editable: true,
       placeholder: "Shot on Quill",
     },
@@ -111,7 +111,7 @@ const fieldGroupsById: Record<string, TemplateFieldGroup> = {
   "brand-mark": {
     id: "brand-mark",
     title: "Brand Mark",
-    bindings: ["cameraBrandLogo", "brandLine"],
+    bindings: ["cameraBrandLogo", "signature"],
     requiredByTemplate: false,
   },
 };
@@ -266,7 +266,7 @@ export function createTemplateLayout(
         direction: "column",
         gap: 18,
         children: [
-          createTextNode("meta", "brandLine", '20px "Helvetica Neue"', textAlign, 1),
+          createTextNode("meta", "signature", '20px "Helvetica Neue"', textAlign, 1),
           createImageNode("photo", "cover"),
         ],
       };
@@ -279,7 +279,7 @@ export function createTemplateLayout(
         gap: 20,
         children: [
           createImageNode("photo", "cover"),
-          createTextNode("meta", "brandLine", '30px "Helvetica Neue"', textAlign, 1),
+          createTextNode("meta", "signature", '30px "Helvetica Neue"', textAlign, 1),
         ],
       };
     case "center-stack":
@@ -291,7 +291,7 @@ export function createTemplateLayout(
         gap: 12,
         children: [
           createImageNode("photo", "cover"),
-          createTextNode("meta", "brandLine", '30px "Helvetica Neue"', textAlign, 1),
+          createTextNode("meta", "signature", '30px "Helvetica Neue"', textAlign, 1),
           createTextNode("details", "shootingParameters", '20px "Helvetica Neue"', textAlign),
         ],
       };
@@ -303,7 +303,7 @@ export function createTemplateLayout(
         justify: "center",
         children: [
           createImageNode("photo", "cover"),
-          createTextNode("meta", "brandLine", '32px "Helvetica Neue"', textAlign, 2),
+          createTextNode("meta", "signature", '32px "Helvetica Neue"', textAlign, 2),
         ],
       };
     case "margin-bottom":
@@ -339,7 +339,7 @@ export function createTemplateLayout(
         gap: 14,
         children: [
           createImageNode("photo", "contain"),
-          createTextNode("meta", "brandLine", '32px "Helvetica Neue"', textAlign, 1),
+          createTextNode("meta", "signature", '32px "Helvetica Neue"', textAlign, 1),
           createTextNode("details", "shootingParameters", '20px "Helvetica Neue"', textAlign),
         ],
       };

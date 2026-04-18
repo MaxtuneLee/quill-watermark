@@ -357,6 +357,78 @@ function assignSourceValue(
   }
 }
 
+function readTemplateControlTokenValue(
+  token: string,
+  sources: TemplateFieldSources,
+): string | null {
+  const trimmedToken = token.trim();
+  if (trimmedToken.length === 0) {
+    return null;
+  }
+
+  const sourcePathMatch = trimmedToken.match(/^(exif|gps|user|derived|afilmory|brand)\./);
+  if (sourcePathMatch) {
+    const [sourceName, ...pathSegments] = trimmedToken.split(".");
+    const source = sources[sourceName as keyof TemplateFieldSources];
+    if (!source) {
+      return null;
+    }
+
+    let current: unknown = source;
+    for (const segment of pathSegments) {
+      if (typeof current !== "object" || current === null || !(segment in current)) {
+        return null;
+      }
+
+      current = (current as Record<string, unknown>)[segment];
+    }
+
+    if (current === null || current === undefined) {
+      return null;
+    }
+
+    return typeof current === "string" ? current : String(current);
+  }
+
+  const sourceCandidates = [
+    sources.derived,
+    sources.brand,
+    sources.user,
+    sources.exif,
+    sources.gps,
+    sources.afilmory,
+  ];
+
+  for (const source of sourceCandidates) {
+    if (!(trimmedToken in source)) {
+      continue;
+    }
+
+    const value = source[trimmedToken];
+    if (value === null || value === undefined) {
+      if (trimmedToken === "cameraModel") {
+        return "Camera unavailable";
+      }
+      return null;
+    }
+
+    return typeof value === "string" ? value : String(value);
+  }
+
+  if (trimmedToken === "cameraModel") {
+    return "Camera unavailable";
+  }
+
+  return null;
+}
+
+function interpolateTemplateControlValue(value: string, sources: TemplateFieldSources): string {
+  return value.replaceAll(/(?<!\{)\{\s*([^{}]+?)\s*\}(?!\})/g, (match, token) => {
+    const resolved = readTemplateControlTokenValue(token, sources);
+    return resolved ?? match;
+  });
+}
+
 function buildFieldSources(
   metadata: NormalizedMetadata,
   userSourceValues: Record<string, string>,
@@ -410,7 +482,11 @@ function buildFieldSources(
       continue;
     }
 
-    assignSourceValue(sources[definition.source], definition, nextValue);
+    assignSourceValue(
+      sources[definition.source],
+      definition,
+      interpolateTemplateControlValue(nextValue, sources),
+    );
   }
 
   return sources;

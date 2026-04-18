@@ -20,6 +20,7 @@ interface StylePanelProps {
   template: WatermarkTemplate;
   values: StylePanelValues;
   onControlChange: (id: StyleControlId, value: StyleControlValue) => void;
+  onSliderHaptic?: () => void;
   layout?: "rail" | "mobile-strip";
   sections?: Array<"canvas" | "type" | "brand">;
 }
@@ -95,6 +96,7 @@ function SliderField({
   step,
   value,
   onChange,
+  onHaptic,
 }: {
   label: string;
   max: number;
@@ -102,6 +104,7 @@ function SliderField({
   step: number;
   value: number;
   onChange: (value: number) => void;
+  onHaptic?: () => void;
 }) {
   return (
     <div className="grid gap-2">
@@ -111,11 +114,12 @@ function SliderField({
       </div>
       <Slider
         aria-label={label}
-        className="editor-logo-scale-slider [&_[data-slot=slider-control]]:flex [&_[data-slot=slider-control]]:w-full [&_[data-slot=slider-control]]:items-center [&_[data-slot=slider-track]]:relative [&_[data-slot=slider-track]]:h-1 [&_[data-slot=slider-track]]:w-full [&_[data-slot=slider-track]]:rounded-full [&_[data-slot=slider-track]]:bg-white/10 [&_[data-slot=slider-range]]:h-full [&_[data-slot=slider-range]]:rounded-full [&_[data-slot=slider-range]]:bg-primary [&_[data-slot=slider-thumb]]:size-4 [&_[data-slot=slider-thumb]]:rounded-full [&_[data-slot=slider-thumb]]:border-2 [&_[data-slot=slider-thumb]]:border-primary [&_[data-slot=slider-thumb]]:bg-white"
+        variant="panel"
         min={min}
         max={max}
         step={step}
         value={value}
+        onHaptic={onHaptic}
         onValueChange={(nextValue) => {
           onChange(Array.isArray(nextValue) ? (nextValue[0] ?? value) : nextValue);
         }}
@@ -210,6 +214,7 @@ export function StylePanel({
   template,
   values,
   onControlChange,
+  onSliderHaptic,
   layout = "rail",
   sections = ["canvas", "type", "brand"],
 }: StylePanelProps) {
@@ -340,6 +345,7 @@ export function StylePanel({
               max={3}
               step={0.1}
               value={values.logoScale}
+              onHaptic={onSliderHaptic}
               onChange={(value) => {
                 onControlChange("logoScale", value);
               }}

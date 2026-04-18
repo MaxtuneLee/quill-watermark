@@ -19,6 +19,11 @@ import type {
 import type { StylePanelValues } from "./panels/panel-state";
 
 export const PREVIEW_LONG_EDGE = 1200;
+const FONT_FAMILY_BY_THEME = {
+  editorial: '"Noto Serif Variable", "Noto Serif", serif',
+  mono: '"JetBrains Mono Variable", "JetBrains Mono", monospace',
+  signature: '"Noto Sans Variable", "Noto Sans", sans-serif',
+} as const;
 
 export interface CanvasSize {
   width: number;
@@ -300,7 +305,7 @@ function withTypographyTheme(
   layout: TemplateLayoutNode,
   theme: StylePanelValues["typographyTheme"],
 ): TemplateLayoutNode {
-  const family = theme === "editorial" ? "serif" : theme === "mono" ? "monospace" : "sans-serif";
+  const family = FONT_FAMILY_BY_THEME[theme];
 
   const replaceFontFamily = (font: string): string => {
     const sizeTokenMatch = /^(.*?\d+(?:\.\d+)?px(?:\/\d+(?:\.\d+)?px)?\s+)/.exec(font.trim());
@@ -333,7 +338,7 @@ function withBrandPosition(
   position: StylePanelValues["brandPosition"],
 ): TemplateLayoutNode {
   if (layout.type === "text") {
-    if (layout.binding !== "brandLine") {
+    if (layout.binding !== "signature") {
       return layout;
     }
 

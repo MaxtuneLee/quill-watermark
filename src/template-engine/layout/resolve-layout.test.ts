@@ -104,7 +104,7 @@ test("keeps space-between children inside bounds when a column child contains fi
             {
               id: "brand",
               type: "text",
-              binding: "brandLine",
+              binding: "signature",
               font: '18px "Helvetica Neue"',
               lineHeight: 24,
               align: "left",
@@ -135,7 +135,7 @@ test("keeps space-between children inside bounds when a column child contains fi
       ],
     },
     resolvedFields: {
-      brandLine: { value: "Quill Studio", mode: "manual" },
+      signature: { value: "Quill Studio", mode: "manual" },
       cameraModel: { value: "iPhone 14 Pro", mode: "auto" },
       cameraBrandLogo: { value: "apple", mode: "auto" },
     },

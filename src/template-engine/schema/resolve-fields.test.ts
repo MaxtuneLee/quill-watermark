@@ -74,10 +74,10 @@ test("resolves single-brace field expressions inside manual overrides", () => {
           editable: false,
           placeholder: "Settings unavailable",
         },
-        brandLine: {
+        signature: {
           kind: "text",
-          source: "brand",
-          path: "line",
+          source: "user",
+          path: "signature",
           editable: true,
           placeholder: "Shot on Quill",
         },
@@ -91,18 +91,16 @@ test("resolves single-brace field expressions inside manual overrides", () => {
         shootingParameters: "28mm • f/1.7 • 1/125s • ISO 400",
       },
       afilmory: {},
-      brand: {
-        line: "quill studio",
-      },
+      brand: {},
     },
     overrides: {
-      brandLine: "Shot on {shootingParameters}",
+      signature: "Shot on {shootingParameters}",
       shootingParameters: "{shootingParameters}",
     },
   });
 
-  expect(resolved.brandLine.value).toBe("Shot on 28mm • f/1.7 • 1/125s • ISO 400");
-  expect(resolved.brandLine.mode).toBe("manual");
+  expect(resolved.signature.value).toBe("Shot on 28mm • f/1.7 • 1/125s • ISO 400");
+  expect(resolved.signature.mode).toBe("manual");
   expect(resolved.shootingParameters.value).toBe("28mm • f/1.7 • 1/125s • ISO 400");
   expect(resolved.shootingParameters.mode).toBe("manual");
 });
@@ -111,29 +109,29 @@ test("interpolates placeholders and applies formatter chains", () => {
   const resolved = resolveFields({
     schema: {
       fields: {
-        brandLine: {
+        signature: {
           kind: "text",
-          source: "brand",
-          path: "line",
+          source: "user",
+          path: "signature",
           editable: false,
-          placeholder: "{{brand.line}}",
+          placeholder: "{{user.signature}}",
           format: [{ type: "uppercase" }, { type: "suffix", value: " / FILM" }],
         },
       },
     },
     sources: {
-      user: {},
+      user: {
+        signature: "quill studio",
+      },
       exif: {},
       gps: {},
       derived: {},
       afilmory: {},
-      brand: {
-        line: "quill studio",
-      },
+      brand: {},
     },
     overrides: {},
   });
 
-  expect(resolved.brandLine.value).toBe("QUILL STUDIO / FILM");
-  expect(resolved.brandLine.mode).toBe("auto");
+  expect(resolved.signature.value).toBe("QUILL STUDIO / FILM");
+  expect(resolved.signature.mode).toBe("auto");
 });

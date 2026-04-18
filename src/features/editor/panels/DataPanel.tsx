@@ -21,8 +21,10 @@ interface DataPanelProps {
   inferredCameraBrand: CameraBrandName | null;
   overrides: Record<string, string>;
   resolvedFields: ResolvedFieldMap;
+  templateControlValues: Record<string, string | number | boolean>;
   onCardEnabledChange: (cardId: string, enabled: boolean) => void;
   onOverrideChange: (fieldId: string, value: string) => void;
+  onTemplateControlChange: (controlId: string, value: string) => void;
   layout?: "rail" | "mobile-strip";
   cardIds?: string[];
 }
@@ -342,8 +344,10 @@ export function DataPanel({
   inferredCameraBrand,
   overrides,
   resolvedFields,
+  templateControlValues,
   onCardEnabledChange,
   onOverrideChange,
+  onTemplateControlChange,
   layout = "rail",
   cardIds,
 }: DataPanelProps) {
@@ -466,8 +470,14 @@ export function DataPanel({
                       return null;
                     }
 
+                    const templateControlValue = templateControlValues[binding];
+                    const isTemplateControlledText = typeof templateControlValue === "string";
                     const hasOverride = Object.hasOwn(overrides, binding);
-                    const inputValue = hasOverride ? (overrides[binding] ?? "") : `{${binding}}`;
+                    const inputValue = isTemplateControlledText
+                      ? templateControlValue
+                      : hasOverride
+                        ? (overrides[binding] ?? "")
+                        : `{${binding}}`;
 
                     return (
                       <ExpressionOverrideField
@@ -476,6 +486,11 @@ export function DataPanel({
                         expressionOptions={expressionOptions}
                         value={inputValue}
                         onChange={(nextValue) => {
+                          if (isTemplateControlledText) {
+                            onTemplateControlChange(binding, nextValue);
+                            return;
+                          }
+
                           onOverrideChange(binding, nextValue);
                         }}
                       />

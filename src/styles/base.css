@@ -120,13 +120,32 @@
 }
 
 @layer base {
+  html {
+    @apply min-h-full font-sans;
+    background-color: #0d0b07;
+  }
+
+  body,
+  #app {
+    @apply min-h-full;
+    background-color: #0d0b07;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
   }
-  html {
-    @apply font-sans;
+  html,
+  body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
+@layer utilities {
+  .font-handwritten {
+    font-family: "Bradley Hand", "Segoe Print", "Chalkboard SE", "Comic Sans MS", cursive;
   }
 }
