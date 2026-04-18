@@ -15,8 +15,7 @@ beforeEach(() => {
     disconnect() {}
   }
 
-  vi.stubGlobal("ResizeObserver", ResizeObserverMock);
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
+  function mockBoundingClientRect(this: HTMLElement): DOMRect {
     if (this.textContent?.includes("Toggle settings")) {
       return {
         width: 36,
@@ -56,7 +55,12 @@ beforeEach(() => {
       y: 0,
       toJSON: () => ({}),
     } satisfies DOMRect;
-  });
+  }
+
+  vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    mockBoundingClientRect,
+  );
 });
 
 function TestHarness() {
